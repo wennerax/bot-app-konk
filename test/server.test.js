@@ -38,3 +38,10 @@ test('Mini App entry page responds at root', async () => {
   assert.match(response.headers['content-type'], /text\/html/);
   await app.close();
 });
+
+test('webhook diagnostic responds to browser GET', async () => {
+  const app = buildServer({ store: new MemoryStore(), bot: {} });
+  const response = await app.inject({ method: 'GET', url: '/telegram/webhook' });
+  assert.equal(response.statusCode, 200);
+  await app.close();
+});

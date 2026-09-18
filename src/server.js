@@ -51,7 +51,10 @@ export function buildServer({ bot, store, botToken } = {}) {
     await giveawayStore.saveGiveaway(giveaway);
     return { ...result, giveawayId: giveaway.id };
   });
-  if (bot) app.post('/telegram/webhook', async (request) => { await bot.handleUpdate(request.body); return { ok: true }; });
+  if (bot) {
+    app.get('/telegram/webhook', async () => ({ ok: true, message: 'Telegram webhook endpoint is ready' }));
+    app.post('/telegram/webhook', async (request) => { await bot.handleUpdate(request.body); return { ok: true }; });
+  }
   return app;
 }
 
