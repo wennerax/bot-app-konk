@@ -4,9 +4,9 @@ export async function checkRequiredChannels(bot, userId, channels) {
       const member = await bot.api.getChatMember(channel.id, userId);
       const isMember = ['creator', 'administrator', 'member'].includes(member.status)
         || (member.status === 'restricted' && member.is_member);
-      return { ...channel, isMember };
-    } catch {
-      return { ...channel, isMember: false, error: 'Не удалось проверить подписку' };
+      return { ...channel, isMember, status: member.status };
+    } catch (error) {
+      return { ...channel, isMember: false, status: 'unknown', error: error.description ?? 'Бот не может проверить этот канал' };
     }
   }));
 

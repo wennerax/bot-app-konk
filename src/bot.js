@@ -51,6 +51,19 @@ function parseDateInput(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+async function resolveRequiredChannels(bot, references) {
+  const botUser = await bot.api.getMe();
+  const requiredChannels = [];
+  for (const reference of references) {
+    if (/^https?:\/\//i.test(reference)) throw new Error('Укажите @username или числовой ID -100..., а не ссылку https://t.me/...');
+    const chat = await bot.api.getChat(reference);
+    const botMember = await bot.api.getChatMember(chat.id, botUser.id);
+    if (!['creator', 'administrator'].includes(botMember.status)) throw new Error(`Бот не является администратором канала «${chat.title ?? reference}»`);
+    requiredChannels.push({ id: chat.id, title: chat.title ?? reference, url: chat.username ? `https://t.me/${chat.username}` : null });
+  }
+  return requiredChannels;
+}
+
 export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
   const processDueGiveaways = async () => {
     for (const giveaway of await store.listGiveaways()) {
@@ -420,14 +433,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
           if (context.msg.text.trim().toLowerCase() !== 'нет' && !giveaway.endsAt) return context.reply('Неверная дата. Формат: 2026-10-01 20:00');
         }
         if (action.type === 'contest_conditions') {
-          const source = await bot.api.getChat(giveaway.channelId);
-          const requiredChannels = [{ id: source.id, title: source.title ?? giveaway.channelId, url: source.username ? `https://t.me/${source.username}` : null }];
-          if (context.msg.text.trim().toLowerCase() !== 'нет') {
-            for (const reference of context.msg.text.split(',').map((item) => item.trim()).filter(Boolean)) {
-              const chat = await bot.api.getChat(reference);
-              requiredChannels.push({ id: chat.id, title: chat.title ?? reference, url: chat.username ? `https://t.me/${chat.username}` : null });
-            }
-          }
+          const references = context.msg.text.trim().toLowerCase() === 'нет' ? [] : context.msg.text.split(',').map((item) => item.trim()).filter(Boolean);
+          const requiredChannels = await resolveRequiredChannels(bot, [giveaway.channelId, ...references]);
           giveaway.requiredChannels = requiredChannels;
         }
         await store.saveGiveaway(giveaway);
@@ -439,12 +446,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     if (action.type === 'conditions') {
       const references = context.msg.text.toLowerCase() === 'нет' ? [] : context.msg.text.split(',').map((item) => item.trim()).filter(Boolean);
       try {
-        const source = await bot.api.getChat(action.channelId);
-        const requiredChannels = [{ id: source.id, title: source.title ?? action.channelId, url: source.username ? `https://t.me/${source.username}` : null }];
-        for (const reference of references) {
-          const chat = await bot.api.getChat(reference);
-          requiredChannels.push({ id: chat.id, title: chat.title ?? reference, url: chat.username ? `https://t.me/${chat.username}` : null });
-        }
+        const requiredChannels = await resolveRequiredChannels(bot, [action.channelId, ...references]);
         const channel = await store.getChannel(action.channelId) ?? { id: action.channelId, title: action.channelId };
         await store.saveChannel({ ...channel, requiredChannels });
         return context.reply(`Условия сохранены. Обязательных каналов: ${requiredChannels.length}.`);
@@ -478,11 +480,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     const moderator = await bot.api.getChatMember(channelId, context.from.id);
     if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
     const references = [channelId, ...partnersText.split(',').map((item) => item.trim()).filter(Boolean)];
-    const requiredChannels = [];
-    for (const reference of references) {
-      const chat = await bot.api.getChat(reference);
-      requiredChannels.push({ id: chat.id, title: chat.title ?? reference, url: chat.username ? `https://t.me/${chat.username}` : null });
-    }
+    const requiredChannels = await resolveRequiredChannels(bot, references);
     const channel = await store.getChannel(channelId) ?? { id: channelId, title: channelId };
     await store.saveChannel({ ...channel, requiredChannels });
     return context.reply(`Условия сохранены. Обязательных каналов: ${requiredChannels.length}.`);
