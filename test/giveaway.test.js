@@ -25,3 +25,9 @@ test('selects unique winners and closes the giveaway', () => {
 test('builds a Telegram deep link', () => {
   assert.equal(getParticipationLink('example_bot', 'giveaway-1'), 'https://t.me/example_bot?startapp=g_giveaway-1');
 });
+
+test('closes an empty giveaway so the scheduler does not retry it forever', () => {
+  const giveaway = createGiveaway({ title: 'Без участников', channelId: '-1001', winnersCount: 1 });
+  assert.deepEqual(pickWinners(giveaway), []);
+  assert.equal(giveaway.status, 'finished');
+});

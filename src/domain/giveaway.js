@@ -39,7 +39,12 @@ export function addParticipant(giveaway, userId) {
 }
 
 export function pickWinners(giveaway, random = Math.random) {
-  if (giveaway.participants.length === 0) return [];
+  if (giveaway.status !== 'active') return giveaway.winners ?? [];
+  if (giveaway.participants.length === 0) {
+    giveaway.winners = [];
+    giveaway.status = 'finished';
+    return [];
+  }
   const pool = [...giveaway.participants];
   const winners = [];
   const count = Math.min(giveaway.winnersCount, pool.length);

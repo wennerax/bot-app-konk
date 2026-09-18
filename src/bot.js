@@ -110,6 +110,7 @@ export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
       if (giveaway.status !== 'active' || !giveaway.endsAt || new Date(giveaway.endsAt).getTime() > Date.now()) continue;
       const winners = pickWinners(giveaway);
       await store.saveGiveaway(giveaway);
+      console.log(`Giveaway ${giveaway.id} finished automatically at ${formatMoscowDate(new Date().toISOString())} MSK`);
       const winnerText = winners.length ? winners.map((id, index) => `${index + 1}. <a href="tg://user?id=${id}">${id}</a>`).join('\n') : 'Участников нет.';
       try {
         await bot.api.sendMessage(giveaway.channelId, `🏆 Итоги конкурса «${giveaway.title}»\n\nПобедители:\n${winnerText}`, { parse_mode: 'HTML' });
