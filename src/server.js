@@ -63,9 +63,18 @@ if (isDirectRun) {
   await app.listen({ port: config.port, host: '0.0.0.0' });
   if (bot) {
     const publicUrl = new URL(config.publicUrl);
-    if (publicUrl.protocol === 'https:') {
-      await bot.api.setWebhook(`${config.publicUrl.replace(/\/$/, '')}/telegram/webhook`, { secret_token: config.webhookSecret });
+    const hasPublicHostname = publicUrl.hostname.includes('.') && publicUrl.hostname !== 'localhost';
+    if (publicUrl.protocol === 'https:' && hasPublicHostname) {
+      try {
+        await bot.api.setWebhook(`${config.publicUrl.replace(/\/$/, '')}/telegram/webhook`, { secret_token: config.webhookSecret });
+      } catch (error) {
+        console.error(`Webhook не настроен для ${config.publicUrl}: ${error.description ?? error.message}`);
+        console.error('Проверьте PUBLIC_URL: нужен полный публичный DNS-адрес, например https://bred.bothost.tech');
+        await bot.api.deleteWebhook();
+        bot.start();
+      }
     } else {
+      console.warn(`PUBLIC_URL=${config.publicUrl} не является публичным HTTPS-адресом; используется long polling.`);
       await bot.api.deleteWebhook();
       bot.start();
     }
