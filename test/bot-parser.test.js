@@ -60,7 +60,7 @@ test('sends custom emoji through Telegram HTML when publishing', async () => {
   }, 'https://t.me/example?startapp=g_1');
 
   assert.equal(payload[0], '-1001');
-  assert.equal(payload[1], '🎁 Билеты\n\nПремиум <tg-emoji emoji-id="123456789">✅</tg-emoji>');
+  assert.equal(payload[1], '🎁 Билеты\n\nПремиум <tg-emoji emoji-id="123456789">🙂</tg-emoji>');
   assert.equal(payload[2].parse_mode, 'HTML');
 });
 

@@ -17,8 +17,7 @@ function buildCustomEmojiHtml(text, entities) {
   for (const entity of customEntities) {
     if (entity.offset < cursor) continue;
     html += escapeTelegramHtml(text.slice(cursor, entity.offset));
-    const fallback = text.slice(entity.offset, entity.offset + entity.length);
-    html += `<tg-emoji emoji-id="${entity.custom_emoji_id}">${escapeTelegramHtml(fallback)}</tg-emoji>`;
+    html += `<tg-emoji emoji-id="${entity.custom_emoji_id}">🙂</tg-emoji>`;
     cursor = entity.offset + entity.length;
   }
   return html + escapeTelegramHtml(text.slice(cursor));
