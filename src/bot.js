@@ -17,15 +17,23 @@ function utf16Length(value) {
 }
 
 function parseGiveawayInput(text, entities = []) {
-  const [titlePart, winnersText, ...descriptionParts] = text.split('|').map((part) => part.trim());
-  const title = titlePart ?? '';
-  const description = descriptionParts.join(' | ');
-  const descriptionStart = title.length + 1;
+  const firstPipe = text.indexOf('|');
+  const secondPipe = firstPipe < 0 ? -1 : text.indexOf('|', firstPipe + 1);
+  const rawTitle = firstPipe < 0 ? text : text.slice(0, firstPipe);
+  const rawWinners = firstPipe < 0 ? '' : text.slice(firstPipe + 1, secondPipe < 0 ? text.length : secondPipe);
+  const rawDescription = secondPipe < 0 ? '' : text.slice(secondPipe + 1);
+  const title = rawTitle.trim();
+  const winnersText = rawWinners.trim();
+  const description = rawDescription.trim();
+  const titleStart = rawTitle.indexOf(title);
+  const descriptionStart = secondPipe < 0 ? -1 : secondPipe + 1 + rawDescription.indexOf(description);
   const outputTitleStart = 3;
   const outputDescriptionStart = outputTitleStart + utf16Length(title) + 2;
   const mappedEntities = entities.flatMap((entity) => {
     const end = entity.offset + entity.length;
-    if (entity.offset >= 0 && end <= title.length) return [{ ...entity, offset: outputTitleStart + entity.offset }];
+    if (title && entity.offset >= titleStart && end <= titleStart + title.length) {
+      return [{ ...entity, offset: outputTitleStart + entity.offset - titleStart }];
+    }
     if (description && entity.offset >= descriptionStart && end <= descriptionStart + description.length) {
       return [{ ...entity, offset: outputDescriptionStart + entity.offset - descriptionStart }];
     }

@@ -29,8 +29,9 @@ export function buildServer({ bot, store, botToken } = {}) {
   });
   app.get('/api/giveaways', async () => giveawayStore.listGiveaways());
   app.get('/api/my-participations', async (request, reply) => {
+    if (!botToken) return reply.code(503).send({ error: 'BOT_TOKEN не настроен' });
     const user = validateWebAppInitData(request.headers['x-telegram-init-data'], botToken);
-    if (!user) return reply.code(401).send({ error: 'Недействительные данные Telegram' });
+    if (!user) return reply.code(401).send({ error: 'Telegram не передал данные пользователя. Откройте Mini App из Telegram.' });
     const giveaways = await giveawayStore.listGiveaways();
     return giveaways.filter((giveaway) => giveaway.participants.includes(String(user.id)));
   });
