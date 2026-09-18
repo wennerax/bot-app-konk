@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseGiveawayInput } from '../src/bot.js';
+import { parseGiveawayInput, publishGiveaway } from '../src/bot.js';
 
 test('pipe-delimited giveaway text keeps UTF-16 entity positions', () => {
   const text = 'Название 🎁 | 2 | Подпишись на канал 🪩';
@@ -47,4 +47,23 @@ test('keeps a custom emoji at the end of the description after trimming', () => 
     length: 1,
     custom_emoji_id: '555666777'
   }]);
+});
+
+test('sends custom emoji entities to Telegram when publishing', async () => {
+  let payload;
+  const bot = { api: { sendMessage: async (...args) => { payload = args; } } };
+  await publishGiveaway(bot, '-1001', {
+    title: 'Билеты',
+    description: 'Премиум ✅',
+    entities: [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: 123456789 }],
+    buttonStyle: 'primary'
+  }, 'https://t.me/example?startapp=g_1');
+
+  assert.equal(payload[0], '-1001');
+  assert.deepEqual(payload[2].entities[0], {
+    type: 'custom_emoji',
+    offset: 19,
+    length: 1,
+    custom_emoji_id: '123456789'
+  });
 });

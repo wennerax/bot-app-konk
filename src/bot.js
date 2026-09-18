@@ -4,21 +4,29 @@ import { checkRequiredChannels, findAdminChannels } from './services/subscriptio
 
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
+  const entities = (giveaway.entities ?? []).map((entity) => ({
+    ...entity,
+    ...(entity.type === 'custom_emoji' && entity.custom_emoji_id
+      ? { custom_emoji_id: String(entity.custom_emoji_id) }
+      : {})
+  }));
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
     url: miniAppUrl,
     style: giveaway.buttonStyle ?? 'primary'
   });
-  const options = { reply_markup: keyboard, entities: giveaway.entities };
-  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, caption_entities: giveaway.entities, reply_markup: keyboard });
-  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, caption_entities: giveaway.entities, reply_markup: keyboard });
-  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: text, caption_entities: giveaway.entities, reply_markup: keyboard });
+  const options = { reply_markup: keyboard, ...(entities.length ? { entities } : {}) };
+  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, ...(entities.length ? { caption_entities: entities } : {}), reply_markup: keyboard });
+  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, ...(entities.length ? { caption_entities: entities } : {}), reply_markup: keyboard });
+  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: text, ...(entities.length ? { caption_entities: entities } : {}), reply_markup: keyboard });
   return bot.api.sendMessage(channelId, text, options);
 }
 
 function utf16Length(value) {
   return [...value].reduce((total, character) => total + (character.codePointAt(0) > 0xffff ? 2 : 1), 0);
 }
+
+export { publishGiveaway };
 
 function getMessageEntities(message) {
   return message?.entities ?? message?.caption_entities ?? [];
