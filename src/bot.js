@@ -11,14 +11,17 @@ function remapPublishedEntities(text, title, description, entities) {
   });
 }
 
+function normalizeCustomEntities(entities = []) {
+  return entities
+    .filter((entity) => entity.type !== 'custom_emoji' || entity.custom_emoji_id)
+    .map((entity) => entity.type === 'custom_emoji'
+      ? { ...entity, custom_emoji_id: String(entity.custom_emoji_id) }
+      : entity);
+}
+
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
-  const entities = (giveaway.entities ?? []).map((entity) => ({
-    ...entity,
-    ...(entity.type === 'custom_emoji' && entity.custom_emoji_id
-      ? { custom_emoji_id: String(entity.custom_emoji_id) }
-      : {})
-  }));
+  const entities = normalizeCustomEntities(giveaway.entities);
   const publishedEntities = remapPublishedEntities(text, giveaway.title, giveaway.description, entities);
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
@@ -70,9 +73,7 @@ export function parseGiveawayInput(text, entities = []) {
   const outputTitleStart = 3;
   const outputDescriptionStart = outputTitleStart + utf16Length(title) + 2;
   const mappedEntities = entities.flatMap((entity) => {
-    const entityLength = entity.type === 'custom_emoji'
-      ? codePointLengthAt(text, entity.offset)
-      : entity.length;
+    const entityLength = entity.length;
     const end = entity.offset + entityLength;
     if (title && entity.offset >= titleStart && end <= titleStart + title.length) {
       return [{ ...entity, length: entityLength, offset: outputTitleStart + entity.offset - titleStart }];
@@ -506,7 +507,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
       const channelSettings = await store.getChannel(action.channelId);
         pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
-        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)}.\nТеперь отправьте дату итогов по Москве:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.`);
+        const emojiIds = entities.filter((entity) => entity.type === 'custom_emoji').map((entity) => entity.custom_emoji_id ?? 'без ID');
+        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)} (${emojiIds.join(', ') || 'нет ID'}).\nТеперь отправьте дату итогов по Москве:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.`);
     } catch (error) {
       return context.reply(`Не удалось опубликовать медиа-конкурс: ${error.message}`);
     }
@@ -527,7 +529,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
         const channelSettings = await store.getChannel(action.channelId);
         pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: context.msg.text, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
-        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)}.\nТеперь отправьте дату итогов:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.`);
+        const emojiIds = entities.filter((entity) => entity.type === 'custom_emoji').map((entity) => entity.custom_emoji_id ?? 'без ID');
+        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)} (${emojiIds.join(', ') || 'нет ID'}).\nТеперь отправьте дату итогов:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.`);
       } catch (error) {
         return context.reply(`Не удалось создать конкурс: ${error.message}`);
       }
