@@ -2,28 +2,6 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from './domain/giveaway.js';
 import { checkRequiredChannels, findAdminChannels } from './services/subscription.js';
 
-function escapeTelegramHtml(value) {
-  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
-
-function customEmojiHtml(text, entities) {
-  const customEntities = entities
-    .filter((entity) => entity.type === 'custom_emoji' && entity.custom_emoji_id)
-    .sort((left, right) => left.offset - right.offset);
-  if (!customEntities.length) return null;
-
-  let cursor = 0;
-  let html = '';
-  for (const entity of customEntities) {
-    const length = [...text.slice(entity.offset)].at(0)?.length === 2 ? 2 : 1;
-    if (entity.offset < cursor) continue;
-    html += escapeTelegramHtml(text.slice(cursor, entity.offset));
-    html += `<tg-emoji emoji-id="${String(entity.custom_emoji_id).replace(/"/g, '')}">${escapeTelegramHtml(text.slice(entity.offset, entity.offset + length))}</tg-emoji>`;
-    cursor = entity.offset + length;
-  }
-  return html + escapeTelegramHtml(text.slice(cursor));
-}
-
 function remapPublishedEntities(text, title, description, entities) {
   const descriptionStart = 3 + utf16Length(title) + 2;
   const outputDescriptionStart = utf16Length(`🎁 ${title}\n\n`);
@@ -72,6 +50,10 @@ export { publishGiveaway };
 
 function getMessageEntities(message) {
   return message?.entities ?? message?.caption_entities ?? [];
+}
+
+function customEmojiCount(entities = []) {
+  return entities.filter((entity) => entity.type === 'custom_emoji' && entity.custom_emoji_id).length;
 }
 
 export function parseGiveawayInput(text, entities = []) {
@@ -524,7 +506,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
       const channelSettings = await store.getChannel(action.channelId);
         pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
-        return context.reply('Теперь отправьте дату итогов по Москве:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.');
+        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)}.\nТеперь отправьте дату итогов по Москве:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.`);
     } catch (error) {
       return context.reply(`Не удалось опубликовать медиа-конкурс: ${error.message}`);
     }
@@ -545,7 +527,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
         const channelSettings = await store.getChannel(action.channelId);
         pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: context.msg.text, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
-        return context.reply('Теперь отправьте дату итогов:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.');
+        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)}.\nТеперь отправьте дату итогов:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.`);
       } catch (error) {
         return context.reply(`Не удалось создать конкурс: ${error.message}`);
       }
