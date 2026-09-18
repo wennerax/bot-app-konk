@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+import crypto, { randomInt } from 'node:crypto';
 
 export function createGiveaway(input, now = new Date()) {
   const title = String(input.title ?? '').trim();
@@ -38,7 +38,7 @@ export function addParticipant(giveaway, userId) {
   return { added: true, reason: 'joined' };
 }
 
-export function pickWinners(giveaway, random = Math.random) {
+export function pickWinners(giveaway, random) {
   if (giveaway.status !== 'active') return giveaway.winners ?? [];
   if (giveaway.participants.length === 0) {
     giveaway.winners = [];
@@ -50,7 +50,9 @@ export function pickWinners(giveaway, random = Math.random) {
   const count = Math.min(giveaway.winnersCount, pool.length);
 
   for (let index = 0; index < count; index += 1) {
-    const selectedIndex = Math.floor(random() * pool.length);
+    const selectedIndex = random
+      ? Math.floor(random() * pool.length)
+      : randomInt(pool.length);
     winners.push(pool.splice(selectedIndex, 1)[0]);
   }
 

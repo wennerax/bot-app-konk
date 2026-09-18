@@ -31,3 +31,13 @@ test('closes an empty giveaway so the scheduler does not retry it forever', () =
   assert.deepEqual(pickWinners(giveaway), []);
   assert.equal(giveaway.status, 'finished');
 });
+
+test('selects exactly the configured number from one hundred participants', () => {
+  const giveaway = createGiveaway({ title: 'Приз', channelId: '-1001', winnersCount: 2 });
+  giveaway.participants = Array.from({ length: 100 }, (_, index) => String(index + 1));
+  const winners = pickWinners(giveaway);
+  assert.equal(winners.length, 2);
+  assert.equal(new Set(winners).size, 2);
+  assert.ok(winners.every((winner) => giveaway.participants.includes(winner)));
+  assert.equal(giveaway.status, 'finished');
+});
