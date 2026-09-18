@@ -20,6 +20,7 @@ function render(giveaways) {
     fragment.querySelector('h2').textContent = giveaway.title;
     fragment.querySelector('.meta').textContent = `${giveaway.participants.length} участников · ${giveaway.winnersCount} победител${giveaway.winnersCount === 1 ? 'ь' : 'я'}`;
     fragment.querySelector('.description').textContent = giveaway.description || 'Условия участия открываются в Telegram.';
+    fragment.querySelector('.join').style.backgroundColor = giveaway.miniAppButtonColor || 'var(--accent)';
     if (giveaway.media?.type === 'photo') {
       const image = document.createElement('img');
       image.src = `/api/media/${encodeURIComponent(giveaway.media.fileId)}`;

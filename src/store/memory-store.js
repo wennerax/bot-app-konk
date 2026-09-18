@@ -18,11 +18,22 @@ export class MemoryStore {
   }
 
   async saveChannel(channel) {
-    this.channels.set(String(channel.id), { ...channel, id: String(channel.id) });
+    const existing = this.channels.get(String(channel.id));
+    this.channels.set(String(channel.id), {
+      ...existing,
+      ...channel,
+      id: String(channel.id),
+      requiredChannels: channel.requiredChannels ?? existing?.requiredChannels ?? [],
+      miniAppButtonColor: channel.miniAppButtonColor ?? existing?.miniAppButtonColor ?? '#e6ff54'
+    });
     return this.channels.get(String(channel.id));
   }
 
   async listChannels() {
     return [...this.channels.values()];
+  }
+
+  async getChannel(id) {
+    return this.channels.get(String(id)) ?? null;
   }
 }

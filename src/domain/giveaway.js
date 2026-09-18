@@ -17,6 +17,7 @@ export function createGiveaway(input, now = new Date()) {
     description: String(input.description ?? '').trim(),
     channelId,
     requiredChannels: Array.isArray(input.requiredChannels) ? input.requiredChannels : [],
+    miniAppButtonColor: input.miniAppButtonColor ?? '#e6ff54',
     media: input.media ?? null,
     entities: Array.isArray(input.entities) ? input.entities : [],
     winnersCount,

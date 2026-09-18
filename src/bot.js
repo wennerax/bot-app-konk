@@ -12,6 +12,25 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
   return bot.api.sendMessage(channelId, text, options);
 }
 
+function channelListKeyboard(channels) {
+  const keyboard = new InlineKeyboard();
+  for (const channel of channels) {
+    keyboard.text(`${channel.title}`, `channel_settings:${channel.id}`).row();
+  }
+  keyboard.text('❌ Закрыть', 'channels_close');
+  return keyboard;
+}
+
+function channelSettingsKeyboard(channel) {
+  const keyboard = new InlineKeyboard()
+    .text('🎁 Создать конкурс', `giveaway_help:${channel.id}`).row()
+    .text('📋 Условия подписки', `conditions_help:${channel.id}`).row()
+    .text('🎨 Цвет Mini App', `color_help:${channel.id}`).row()
+    .text('🖼 Медиа поста', `media_help:${channel.id}`).row();
+  if (channel.url) keyboard.url('🔗 Открыть канал', channel.url).row();
+  return keyboard.text('⬅️ К списку каналов', 'channels_back').row().text('❌ Закрыть', 'channels_close');
+}
+
 export function createBot({ token, store, publicUrl, miniAppName, managedChannels = [] } = {}) {
   const bot = new Bot(token);
 
@@ -88,8 +107,80 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     const discoveredChannels = await store.listChannels();
     const channels = await findAdminChannels(bot, context.from.id, discoveredChannels);
     if (!channels.length) return context.reply('Каналы пока не обнаружены. Добавь бота администратором канала и создай/отредактируй пост в канале, чтобы Telegram прислал событие боту.');
-    const lines = channels.map((channel) => `• ${channel.title} (${channel.id})`);
-    return context.reply(`Доступные каналы для конкурсов:\n${lines.join('\n')}\n\nMini App: ${publicUrl}`);
+    return context.reply('🎛 Выберите канал для настройки:', { reply_markup: channelListKeyboard(channels) });
+  });
+
+  bot.callbackQuery(/^channel_settings:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const channelId = context.match[1];
+    const channel = (await store.listChannels()).find((item) => String(item.id) === channelId);
+    if (!channel) return context.reply('Канал больше не найден.');
+    const moderator = await bot.api.getChatMember(channelId, context.from.id);
+    if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('У вас больше нет прав администратора этого канала.');
+    return context.editMessageText(`🎛 Настройки канала\n\n${channel.title}\nID: ${channel.id}\n\nВыберите действие:`, { reply_markup: channelSettingsKeyboard(channel) });
+  });
+
+  bot.callbackQuery('channels_back', async (context) => {
+    await context.answerCallbackQuery();
+    const channels = await findAdminChannels(bot, context.from.id, await store.listChannels());
+    if (!channels.length) return context.editMessageText('Доступные каналы не найдены.');
+    return context.editMessageText('🎛 Выберите канал для настройки:', { reply_markup: channelListKeyboard(channels) });
+  });
+
+  bot.callbackQuery(/^giveaway_help:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const channelId = context.match[1];
+    return context.editMessageText(`🎁 Создание конкурса\n\nОтправьте боту команду:\n/newgiveaway Название | количество победителей | ${channelId}\n\nПример:\n/newgiveaway Билеты | 2 | ${channelId}`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${channelId}`) });
+  });
+
+  bot.callbackQuery(/^conditions_help:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const channel = await store.getChannel(context.match[1]);
+    const conditions = channel?.requiredChannels?.length
+      ? channel.requiredChannels.map((item) => `• ${item.title} (${item.id})`).join('\n')
+      : 'Не настроены';
+    return context.editMessageText(`📋 Условия подписки\n\nТекущие обязательные каналы:\n${conditions}\n\nЧтобы настроить, отправьте боту:\n/setconditions ID_канала | @партнер1, @партнер2\n\nДля участия в самом канале добавьте его ID первым. Пустой список отключает проверку подписок.`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+  });
+
+  bot.callbackQuery(/^color_help:(.+)$/, async (context) => {
+    await context.answerCallbackQuery('Цвет кнопки под постом Telegram не настраивается');
+    return context.editMessageText('🎨 Цвет кнопки\n\nTelegram не позволяет менять цвет inline-кнопки под постом: его задаёт приложение Telegram.\n\nЦвет кнопки внутри Mini App можно изменить командой:\n/setappcolor ID_канала | #ff5a36', { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+  });
+
+  bot.callbackQuery(/^media_help:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    return context.editMessageText(`🖼 Медиа поста\n\nОтправьте боту фото, видео или документ, затем ответьте на него командой:\n/newgiveaway Название | 2 | ${context.match[1]}\n\nМедиа будет опубликовано вместе с конкурсом.`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+  });
+
+  bot.command('setconditions', async (context) => {
+    const [channelId, partnersText = ''] = context.match.split('|').map((part) => part.trim());
+    if (!channelId) return context.reply('Формат: /setconditions ID_канала | @партнер1, @партнер2');
+    const moderator = await bot.api.getChatMember(channelId, context.from.id);
+    if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
+    const references = [channelId, ...partnersText.split(',').map((item) => item.trim()).filter(Boolean)];
+    const requiredChannels = [];
+    for (const reference of references) {
+      const chat = await bot.api.getChat(reference);
+      requiredChannels.push({ id: chat.id, title: chat.title ?? reference, url: chat.username ? `https://t.me/${chat.username}` : null });
+    }
+    const channel = await store.getChannel(channelId) ?? { id: channelId, title: channelId };
+    await store.saveChannel({ ...channel, requiredChannels });
+    return context.reply(`Условия сохранены. Обязательных каналов: ${requiredChannels.length}.`);
+  });
+
+  bot.command('setappcolor', async (context) => {
+    const [channelId, color] = context.match.split('|').map((part) => part.trim());
+    if (!channelId || !/^#[0-9a-f]{6}$/i.test(color ?? '')) return context.reply('Формат: /setappcolor ID_канала | #ff5a36');
+    const moderator = await bot.api.getChatMember(channelId, context.from.id);
+    if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
+    const channel = await store.getChannel(channelId) ?? { id: channelId, title: channelId };
+    await store.saveChannel({ ...channel, miniAppButtonColor: color });
+    return context.reply(`Цвет кнопки Mini App сохранён: ${color}`);
+  });
+
+  bot.callbackQuery('channels_close', async (context) => {
+    await context.answerCallbackQuery();
+    return context.deleteMessage();
   });
 
   bot.command('newgiveaway', async (context) => {
@@ -112,7 +203,16 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       const entities = (context.msg?.entities ?? context.msg?.caption_entities ?? [])
         .filter((entity) => entity.offset >= titleStart && entity.offset + entity.length <= titleEnd)
         .map((entity) => ({ ...entity, offset: entity.offset - titleStart + 3 }));
-      const giveaway = createGiveaway({ title, winnersCount: winnersText, channelId, media, entities });
+      const channelSettings = await store.getChannel(channelId);
+      const giveaway = createGiveaway({
+        title,
+        winnersCount: winnersText,
+        channelId,
+        media,
+        entities,
+        requiredChannels: channelSettings?.requiredChannels ?? [],
+        miniAppButtonColor: channelSettings?.miniAppButtonColor
+      });
       await store.saveGiveaway(giveaway);
       const username = (await bot.api.getMe()).username;
       await publishGiveaway(bot, channelId, giveaway, getParticipationLink(username, giveaway.id, miniAppName));
