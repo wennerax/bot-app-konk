@@ -7,6 +7,27 @@ const userLabel = document.querySelector('#user-label');
 const participation = document.querySelector('#participation');
 const status = document.querySelector('#check-status');
 const dice = document.querySelector('.dice');
+let scrollFrame = null;
+let scrollStopTimer = null;
+
+function updateLight() {
+  const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
+  const progress = Math.min(window.scrollY / maxScroll, 1);
+  const beamX = 78 - progress * 54;
+  const beamY = 18 + progress * 68;
+  const glassShift = Math.sin(progress * Math.PI * 2) * 18;
+  document.documentElement.style.setProperty('--beam-x', `${beamX}%`);
+  document.documentElement.style.setProperty('--beam-y', `${beamY}%`);
+  document.documentElement.style.setProperty('--glass-shift', `${glassShift}px`);
+  document.body.classList.add('is-scrolling');
+  clearTimeout(scrollStopTimer);
+  scrollStopTimer = setTimeout(() => document.body.classList.remove('is-scrolling'), 140);
+  scrollFrame = null;
+}
+
+window.addEventListener('scroll', () => {
+  if (scrollFrame === null) scrollFrame = requestAnimationFrame(updateLight);
+}, { passive: true });
 
 function getStartParam() {
   const urlParams = new URLSearchParams(location.search);

@@ -80,9 +80,40 @@ body { background: var(--soft-bg); color: var(--soft-ink); font-size: 15px; }
 }
 
 body {
+	position: relative;
+	isolation: isolate;
 	background: radial-gradient(circle at 90% -8%, rgba(255, 23, 68, .28), transparent 34%), radial-gradient(circle at 0 70%, rgba(117, 0, 20, .2), transparent 30%), var(--bg);
 	color: var(--ink);
 }
+
+body::before {
+	position: fixed;
+	inset: -22vh -18vw;
+	z-index: -1;
+	content: '';
+	pointer-events: none;
+	opacity: .72;
+	background: radial-gradient(ellipse 24% 46% at var(--beam-x, 78%) var(--beam-y, 18%), rgba(255, 35, 67, .2), transparent 68%);
+	filter: blur(18px);
+	transform: rotate(-8deg);
+	transition: opacity .35s ease;
+}
+
+body::after {
+	position: fixed;
+	inset: 0;
+	z-index: 20;
+	content: '';
+	pointer-events: none;
+	opacity: .12;
+	background: linear-gradient(112deg, transparent 22%, rgba(255, 103, 120, .18) 37%, rgba(255, 23, 68, .08) 43%, transparent 57%);
+	transform: translate3d(var(--glass-shift, 0px), 0, 0);
+	mix-blend-mode: screen;
+	transition: opacity .3s ease;
+}
+
+body.is-scrolling::before { opacity: .95; }
+body.is-scrolling::after { opacity: .28; }
 
 .shell { width: min(100% - 28px, 640px); padding: 28px 0 52px; }
 .hero { border-bottom-color: var(--line); padding: 12px 0 28px; }
@@ -116,4 +147,8 @@ body {
 	.shell { width: min(100% - 22px, 640px); padding-top: 18px; }
 	.hero h1 { font-size: 43px; }
 	.giveaway { padding: 15px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	body::before, body::after { transition: none; }
 }
