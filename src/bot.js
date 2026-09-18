@@ -20,7 +20,7 @@ function utf16Length(value) {
   return [...value].reduce((total, character) => total + (character.codePointAt(0) > 0xffff ? 2 : 1), 0);
 }
 
-function parseGiveawayInput(text, entities = []) {
+export function parseGiveawayInput(text, entities = []) {
   const firstPipe = text.indexOf('|');
   const secondPipe = firstPipe < 0 ? -1 : text.indexOf('|', firstPipe + 1);
   const rawTitle = firstPipe < 0 ? text : text.slice(0, firstPipe);
@@ -62,9 +62,14 @@ function formatMoscowDate(value) {
   }).format(new Date(value));
 }
 
-function remapDescriptionEntities(description, entities, title) {
+function remapDescriptionEntities(description, entities, title, sourceText = description) {
   const descriptionStart = 3 + utf16Length(title) + 2;
-  return (entities ?? []).map((entity) => ({ ...entity, offset: descriptionStart + entity.offset }));
+  const sourceStart = sourceText.indexOf(description);
+  return (entities ?? []).flatMap((entity) => {
+    const entityEnd = entity.offset + entity.length;
+    if (sourceStart < 0 || entity.offset < sourceStart || entityEnd > sourceStart + utf16Length(description)) return [];
+    return [{ ...entity, offset: descriptionStart + entity.offset - sourceStart }];
+  });
 }
 
 async function resolveRequiredChannels(bot, references) {
@@ -492,12 +497,19 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       const giveaway = await store.getGiveaway(action.giveawayId);
       if (!giveaway) return context.reply('Конкурс не найден.');
       try {
-        if (action.type === 'contest_name') giveaway.title = context.msg.text.trim();
+        if (action.type === 'contest_name') {
+          const title = context.msg.text.trim();
+          giveaway.title = title;
+          giveaway.entities = [
+            ...(giveaway.entities ?? []).filter((entity) => entity.offset >= 3 + utf16Length(title) + 2),
+            ...(context.msg.entities ?? []).map((entity) => ({ ...entity, offset: 3 + entity.offset }))
+          ];
+        }
         if (action.type === 'contest_description') {
           giveaway.description = context.msg.text.trim();
           const titleLength = utf16Length(giveaway.title);
           const titleEntities = (giveaway.entities ?? []).filter((entity) => entity.offset >= 3 && entity.offset < 3 + titleLength);
-          giveaway.entities = [...titleEntities, ...remapDescriptionEntities(giveaway.description, context.msg.entities, giveaway.title)];
+          giveaway.entities = [...titleEntities, ...remapDescriptionEntities(giveaway.description, context.msg.entities, giveaway.title, context.msg.text)];
           giveaway.sourceText = `${giveaway.title} | ${giveaway.winnersCount} | ${giveaway.description}`;
         }
         if (action.type === 'contest_ends') {
