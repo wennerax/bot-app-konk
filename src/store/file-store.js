@@ -42,6 +42,11 @@ export class FileStore {
     return this.data.giveaways[id] ? structuredClone(this.data.giveaways[id]) : null;
   }
 
+  async deleteGiveaway(id) {
+    delete this.data.giveaways[id];
+    await this.persist();
+  }
+
   async listGiveaways() {
     return Object.values(this.data.giveaways)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
@@ -57,7 +62,8 @@ export class FileStore {
       id,
       requiredChannels: channel.requiredChannels ?? existing.requiredChannels ?? [],
       miniAppButtonColor: channel.miniAppButtonColor ?? existing.miniAppButtonColor ?? '#e6ff54',
-      buttonStyle: channel.buttonStyle ?? existing.buttonStyle ?? 'primary'
+      buttonStyle: channel.buttonStyle ?? existing.buttonStyle ?? 'primary',
+      defaultEndsAt: channel.defaultEndsAt ?? existing.defaultEndsAt ?? null
     };
     await this.persist();
     return structuredClone(this.data.channels[id]);

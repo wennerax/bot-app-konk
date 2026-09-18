@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { createBot } from './bot.js';
+import { createBot, startGiveawayScheduler } from './bot.js';
 import { config } from './config.js';
 import { createGiveaway } from './domain/giveaway.js';
 import { MemoryStore } from './store/memory-store.js';
@@ -28,17 +28,17 @@ export function buildServer({ bot, store, botToken } = {}) {
       lastErrorDate: info.last_error_date ?? null
     };
   });
-  app.get('/api/giveaways', async () => giveawayStore.listGiveaways());
+  app.get('/api/giveaways', async () => (await giveawayStore.listGiveaways()).filter((giveaway) => giveaway.status !== 'draft'));
   app.get('/api/my-participations', async (request, reply) => {
     if (!botToken) return reply.code(503).send({ error: 'BOT_TOKEN не настроен' });
     const user = validateWebAppInitData(request.headers['x-telegram-init-data'], botToken);
     if (!user) return reply.code(401).send({ error: 'Telegram не передал данные пользователя. Откройте Mini App из Telegram.' });
     const giveaways = await giveawayStore.listGiveaways();
-    return giveaways.filter((giveaway) => giveaway.participants.includes(String(user.id)));
+    return giveaways.filter((giveaway) => giveaway.status !== 'draft' && giveaway.participants.includes(String(user.id)));
   });
   app.get('/api/giveaways/:id', async (request, reply) => {
     const giveaway = await giveawayStore.getGiveaway(request.params.id);
-    if (!giveaway) return reply.code(404).send({ error: 'Конкурс не найден' });
+    if (!giveaway || giveaway.status === 'draft') return reply.code(404).send({ error: 'Конкурс не опубликован' });
     return giveaway;
   });
   app.get('/api/media/:fileId', async (request, reply) => {
@@ -65,7 +65,7 @@ export function buildServer({ bot, store, botToken } = {}) {
     const giveaway = await giveawayStore.getGiveaway(request.params.id);
     if (!giveaway) return reply.code(404).send({ error: 'Конкурс не найден' });
     const check = await checkRequiredChannels(bot, user.id, giveaway.requiredChannels);
-    if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels });
+    if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels, missingChannels: check.channels.filter((channel) => !channel.isMember) });
     const result = addParticipant(giveaway, user.id);
     await giveawayStore.saveGiveaway(giveaway);
     return { ...result, giveawayId: giveaway.id };
@@ -89,6 +89,7 @@ if (isDirectRun) {
   const bot = config.botToken ? createBot({ token: config.botToken, store, publicUrl: config.publicUrl, miniAppName: process.env.MINI_APP_NAME, managedChannels: config.managedChannels }) : null;
   const app = buildServer({ bot, store, botToken: config.botToken });
   if (bot) await bot.init();
+  if (bot) startGiveawayScheduler({ bot, store });
   await app.listen({ port: config.port, host: '0.0.0.0' });
   if (bot) {
     const publicUrl = new URL(config.publicUrl);

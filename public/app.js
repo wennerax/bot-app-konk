@@ -72,7 +72,11 @@ async function participate() {
   const result = await response.json();
   dice.classList.remove('rolling');
   if (!response.ok) {
+    const missing = result.missingChannels?.filter((channel) => channel.url) ?? [];
     status.textContent = result.error || 'Условия не выполнены';
+    if (missing.length) {
+      status.innerHTML = `${result.error}<br>${missing.map((channel) => `<a href="${channel.url}" target="_blank">Подписаться: ${channel.title}</a>`).join('<br>')}`;
+    }
     telegram?.showAlert(result.error || 'Подпишись на все обязательные каналы и повтори проверку.');
     document.querySelector('#participate').hidden = false;
     return;

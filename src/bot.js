@@ -46,6 +46,38 @@ function parseGiveawayInput(text, entities = []) {
   return { title, winnersText, description, entities: mappedEntities };
 }
 
+function parseDateInput(value) {
+  const date = new Date(value.replace(' ', 'T'));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
+  const processDueGiveaways = async () => {
+    for (const giveaway of await store.listGiveaways()) {
+      if (giveaway.status !== 'active' || !giveaway.endsAt || new Date(giveaway.endsAt).getTime() > Date.now()) continue;
+      const winners = pickWinners(giveaway);
+      await store.saveGiveaway(giveaway);
+      const winnerText = winners.length ? winners.map((id, index) => `${index + 1}. <a href="tg://user?id=${id}">${id}</a>`).join('\n') : 'Участников нет.';
+      try {
+        await bot.api.sendMessage(giveaway.channelId, `🏆 Итоги конкурса «${giveaway.title}»\n\nПобедители:\n${winnerText}`, { parse_mode: 'HTML' });
+      } catch (error) {
+        console.error(`Не удалось опубликовать итоги ${giveaway.id}:`, error.message);
+      }
+      for (const winnerId of winners) {
+        try {
+          await bot.api.sendMessage(winnerId, `🎉 Поздравляем! Вы победили в конкурсе «${giveaway.title}».\n\nСвяжитесь с организатором канала для получения приза.`);
+        } catch (error) {
+          console.warn(`Не удалось отправить уведомление победителю ${winnerId}:`, error.message);
+        }
+      }
+    }
+  };
+  const timer = setInterval(() => processDueGiveaways().catch((error) => console.error('Ошибка планировщика конкурсов:', error)), intervalMs);
+  timer.unref?.();
+  processDueGiveaways().catch((error) => console.error('Ошибка первичной проверки конкурсов:', error));
+  return () => clearInterval(timer);
+}
+
 function channelListKeyboard(channels) {
   const keyboard = new InlineKeyboard();
   for (const channel of channels) {
@@ -57,10 +89,7 @@ function channelListKeyboard(channels) {
 
 function channelSettingsKeyboard(channel) {
   const keyboard = new InlineKeyboard()
-    .text('🎁 Создать конкурс', `giveaway_help:${channel.id}`).row()
-    .text('📋 Условия подписки', `conditions_help:${channel.id}`).row()
-    .text('🎨 Цвет интерфейса', `color_help:${channel.id}`).row()
-    .text('🖼 Медиа поста', `media_help:${channel.id}`).row();
+    .text('🎁 Настройка конкурсов', `contests_menu:${channel.id}`).row();
   if (channel.url) keyboard.url('🔗 Открыть канал', channel.url).row();
   return keyboard.text('⬅️ К списку каналов', 'channels_back').row().text('❌ Закрыть', 'channels_close');
 }
@@ -164,6 +193,111 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     return context.editMessageText(`🎛 Настройки канала\n\n${channel.title}\nID: ${channel.id}\n\nВыберите действие:`, { reply_markup: channelSettingsKeyboard(channel) });
   });
 
+  bot.callbackQuery(/^contests_menu:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const channelId = context.match[1];
+    const contests = (await store.listGiveaways()).filter((giveaway) => String(giveaway.channelId) === channelId);
+    const keyboard = new InlineKeyboard().text('➕ Создать конкурс', `contest_create:${channelId}`).row();
+    for (const contest of contests) keyboard.text(`${contest.status === 'draft' ? '📝' : '🎁'} ${contest.title}`, `contest_settings:${contest.id}`).row();
+    keyboard.text('⬅️ Назад', `channel_settings:${channelId}`);
+    return context.editMessageText(`🎁 Настройка конкурсов\n\nКонкурсов: ${contests.length}\nВыберите конкурс или создайте новый:`, { reply_markup: keyboard });
+  });
+
+  bot.callbackQuery(/^contest_create:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    pendingActions.set(String(context.from.id), { type: 'create', channelId: context.match[1] });
+    return context.editMessageText('➕ Новый конкурс\n\nОтправьте:\nНазвание | количество победителей | описание\n\nПример:\nБилеты | 2 | Подпишись и участвуй');
+  });
+
+  bot.callbackQuery(/^contest_settings:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    return context.editMessageText(`⚙️ Настройка конкурса\n\nНазвание: ${giveaway.title}\nУсловия: ${giveaway.requiredChannels.length}\nОписание: ${giveaway.description || 'не задано'}\nИтоги: ${giveaway.endsAt ? new Date(giveaway.endsAt).toLocaleString('ru-RU') : 'вручную'}\nМедиа: ${giveaway.media ? 'добавлено' : 'нет'}\nСтатус: ${giveaway.status}`, { reply_markup: contestSettingsKeyboard(giveaway) });
+  });
+
+  bot.callbackQuery(/^contest_publish:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    if (giveaway.status !== 'draft') return context.reply('Этот конкурс уже опубликован или завершён.');
+    giveaway.status = 'active';
+    await store.saveGiveaway(giveaway);
+    const username = (await bot.api.getMe()).username;
+    await publishGiveaway(bot, giveaway.channelId, giveaway, getParticipationLink(username, giveaway.id));
+    return context.editMessageText(`✅ Конкурс опубликован: ${giveaway.title}`);
+  });
+
+  bot.callbackQuery(/^contest_finish:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    if (giveaway.status !== 'active') return context.reply('Конкурс уже завершён.');
+    const winners = pickWinners(giveaway);
+    await store.saveGiveaway(giveaway);
+    const winnerText = winners.length ? winners.map((id, index) => `${index + 1}. <a href="tg://user?id=${id}">${id}</a>`).join('\n') : 'Участников нет.';
+    await bot.api.sendMessage(giveaway.channelId, `🏆 Итоги конкурса «${giveaway.title}»\n\nПобедители:\n${winnerText}`, { parse_mode: 'HTML' });
+    for (const winnerId of winners) {
+      try {
+        await bot.api.sendMessage(winnerId, `🎉 Поздравляем! Вы победили в конкурсе «${giveaway.title}».`);
+      } catch (error) {
+        console.warn(`Не удалось уведомить победителя ${winnerId}:`, error.message);
+      }
+    }
+    return context.editMessageText(`🏁 Конкурс завершён. Победителей: ${winners.length}`);
+  });
+
+  bot.callbackQuery(/^contest_button:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    const keyboard = new InlineKeyboard()
+      .text('🔴 Красный', `contest_button_set:${giveaway.id}:danger`)
+      .text('🟢 Зелёный', `contest_button_set:${giveaway.id}:success`).row()
+      .text('🔵 Синий', `contest_button_set:${giveaway.id}:primary`)
+      .text('⚪ Обычный', `contest_button_set:${giveaway.id}:default`).row()
+      .text('⬅️ Назад', `contest_settings:${giveaway.id}`);
+    return context.editMessageText(`🎨 Стиль кнопки\n\nТекущий: ${giveaway.buttonStyle ?? 'primary'}`, { reply_markup: keyboard });
+  });
+
+  bot.callbackQuery(/^contest_button_set:(.+):(danger|success|primary|default)$/, async (context) => {
+    await context.answerCallbackQuery('Сохранено');
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    giveaway.buttonStyle = context.match[2];
+    await store.saveGiveaway(giveaway);
+    return context.editMessageText(`🎨 Стиль кнопки сохранён: ${giveaway.buttonStyle}`, { reply_markup: contestSettingsKeyboard(giveaway) });
+  });
+
+  bot.callbackQuery(/^contest_media:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    pendingActions.set(String(context.from.id), { type: 'contest_media', giveawayId: context.match[1] });
+    return context.editMessageText('🖼 Отправьте фото, видео или документ. Медиа будет добавлено в этот конкурс.', { reply_markup: new InlineKeyboard().text('⬅️ Назад', `contest_settings:${context.match[1]}`) });
+  });
+
+  bot.callbackQuery(/^contest_delete:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    if (giveaway.status !== 'draft') return context.reply('Опубликованный конкурс нельзя удалить из меню.');
+    await store.deleteGiveaway(giveaway.id);
+    return context.editMessageText('🗑 Черновик удалён.', { reply_markup: new InlineKeyboard().text('⬅️ К конкурсам', `contests_menu:${giveaway.channelId}`) });
+  });
+
+  for (const field of ['name', 'description', 'conditions', 'ends']) {
+    bot.callbackQuery(new RegExp(`^contest_${field}:(.+)$`), async (context) => {
+      await context.answerCallbackQuery();
+      const giveaway = await store.getGiveaway(context.match[1]);
+      if (!giveaway) return context.reply('Конкурс не найден.');
+      pendingActions.set(String(context.from.id), { type: `contest_${field}`, giveawayId: giveaway.id });
+      const prompt = field === 'name' ? 'Отправьте новое название конкурса.'
+        : field === 'description' ? 'Отправьте новое описание конкурса.'
+          : field === 'conditions' ? 'Отправьте @партнёров через запятую или «нет».'
+            : 'Отправьте дату итогов YYYY-MM-DD HH:mm или «нет».';
+      return context.editMessageText(`✏️ ${prompt}`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `contest_settings:${giveaway.id}`) });
+    });
+  }
+
   bot.callbackQuery('channels_back', async (context) => {
     await context.answerCallbackQuery();
     const channels = await findAdminChannels(bot, context.from.id, await store.listChannels());
@@ -186,6 +320,14 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       : 'Не настроены';
     pendingActions.set(String(context.from.id), { type: 'conditions', channelId: context.match[1] });
     return context.editMessageText(`📋 Условия подписки\n\nТекущие обязательные каналы:\n${conditions}\n\nТеперь отправьте партнёров через запятую:\n@partner1, @partner2\n\nСам канал конкурса добавляется автоматически. Чтобы убрать партнёров, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+  });
+
+  bot.callbackQuery(/^ends_at_help:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const channel = await store.getChannel(context.match[1]);
+    const current = channel?.defaultEndsAt ? new Date(channel.defaultEndsAt).toLocaleString('ru-RU') : 'не задана';
+    pendingActions.set(String(context.from.id), { type: 'ends_at', channelId: context.match[1] });
+    return context.editMessageText(`⏰ Дата итогов\n\nТекущая дата: ${current}\n\nОтправьте дату и время в формате:\nYYYY-MM-DD HH:mm\n\nПример: 2026-10-01 20:00\n\nЧтобы отключить автоматические итоги, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
   });
 
   bot.callbackQuery(/^color_help:(.+)$/, async (context) => {
@@ -213,8 +355,19 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 
   bot.on('message', async (context, next) => {
     const action = pendingActions.get(String(context.from.id));
-    if (!action || action.type !== 'media') return next();
+    if (!action || !['media', 'contest_media'].includes(action.type)) return next();
     const source = context.msg;
+    if (action.type === 'contest_media') {
+      const giveaway = await store.getGiveaway(action.giveawayId);
+      const media = source.photo?.at(-1) ? { type: 'photo', fileId: source.photo.at(-1).file_id }
+        : source.video ? { type: 'video', fileId: source.video.file_id }
+          : source.document ? { type: 'document', fileId: source.document.file_id } : null;
+      if (!giveaway || !media) return context.reply('Отправьте фото, видео или документ.');
+      giveaway.media = media;
+      pendingActions.delete(String(context.from.id));
+      await store.saveGiveaway(giveaway);
+      return context.reply('Медиа добавлено в конкурс.', { reply_markup: contestSettingsKeyboard(giveaway) });
+    }
     const caption = source.caption ?? '';
     const parsed = parseGiveawayInput(caption, source.caption_entities);
     const { title, winnersText, description, entities } = parsed;
@@ -229,11 +382,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       const moderator = await bot.api.getChatMember(action.channelId, context.from.id);
       if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
       const channelSettings = await store.getChannel(action.channelId);
-      const giveaway = createGiveaway({ title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle });
-      await store.saveGiveaway(giveaway);
-      const username = (await bot.api.getMe()).username;
-      await publishGiveaway(bot, action.channelId, giveaway, getParticipationLink(username, giveaway.id));
-      return context.reply(`Конкурс с медиа опубликован: ${giveaway.title}`);
+        pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
+        return context.reply('Теперь отправьте дату итогов:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.');
     } catch (error) {
       return context.reply(`Не удалось опубликовать медиа-конкурс: ${error.message}`);
     }
@@ -253,13 +403,37 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         const moderator = await bot.api.getChatMember(action.channelId, context.from.id);
         if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
         const channelSettings = await store.getChannel(action.channelId);
-        const giveaway = createGiveaway({ title, description, entities, sourceText: context.msg.text, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle });
-        await store.saveGiveaway(giveaway);
-        const username = (await bot.api.getMe()).username;
-        await publishGiveaway(bot, action.channelId, giveaway, getParticipationLink(username, giveaway.id));
-        return context.reply(`Конкурс опубликован в канале: ${giveaway.title}`);
+        pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: context.msg.text, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
+        return context.reply('Теперь отправьте дату итогов:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.');
       } catch (error) {
         return context.reply(`Не удалось создать конкурс: ${error.message}`);
+      }
+    }
+    if (action.type.startsWith('contest_')) {
+      const giveaway = await store.getGiveaway(action.giveawayId);
+      if (!giveaway) return context.reply('Конкурс не найден.');
+      try {
+        if (action.type === 'contest_name') giveaway.title = context.msg.text.trim();
+        if (action.type === 'contest_description') giveaway.description = context.msg.text.trim();
+        if (action.type === 'contest_ends') {
+          giveaway.endsAt = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
+          if (context.msg.text.trim().toLowerCase() !== 'нет' && !giveaway.endsAt) return context.reply('Неверная дата. Формат: 2026-10-01 20:00');
+        }
+        if (action.type === 'contest_conditions') {
+          const source = await bot.api.getChat(giveaway.channelId);
+          const requiredChannels = [{ id: source.id, title: source.title ?? giveaway.channelId, url: source.username ? `https://t.me/${source.username}` : null }];
+          if (context.msg.text.trim().toLowerCase() !== 'нет') {
+            for (const reference of context.msg.text.split(',').map((item) => item.trim()).filter(Boolean)) {
+              const chat = await bot.api.getChat(reference);
+              requiredChannels.push({ id: chat.id, title: chat.title ?? reference, url: chat.username ? `https://t.me/${chat.username}` : null });
+            }
+          }
+          giveaway.requiredChannels = requiredChannels;
+        }
+        await store.saveGiveaway(giveaway);
+        return context.reply(`Настройка сохранена: ${giveaway.title}`, { reply_markup: contestSettingsKeyboard(giveaway) });
+      } catch (error) {
+        return context.reply(`Не удалось сохранить настройку: ${error.message}`);
       }
     }
     if (action.type === 'conditions') {
@@ -277,6 +451,24 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       } catch (error) {
         return context.reply(`Не удалось сохранить канал: ${error.message}`);
       }
+    }
+    if (action.type === 'create_confirm') {
+      const endsAt = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
+      if (context.msg.text.trim().toLowerCase() !== 'нет' && !endsAt) return context.reply('Неверная дата. Используйте формат: 2026-10-01 20:00 или отправьте «нет».');
+      try {
+        const giveaway = createGiveaway({ ...action.draft, endsAt, status: 'draft' });
+        await store.saveGiveaway(giveaway);
+        return context.reply(`Черновик конкурса создан: ${giveaway.title}`, { reply_markup: contestSettingsKeyboard(giveaway) });
+      } catch (error) {
+        return context.reply(`Не удалось создать конкурс: ${error.message}`);
+      }
+    }
+    if (action.type === 'ends_at') {
+      const value = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
+      if (context.msg.text.trim().toLowerCase() !== 'нет' && !value) return context.reply('Неверная дата. Используйте формат: 2026-10-01 20:00');
+      const channel = await store.getChannel(action.channelId) ?? { id: action.channelId, title: action.channelId };
+      await store.saveChannel({ ...channel, defaultEndsAt: value });
+      return context.reply(value ? `Дата итогов сохранена: ${new Date(value).toLocaleString('ru-RU')}` : 'Автоматическая дата итогов отключена.');
     }
   });
 
@@ -336,6 +528,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         media,
         entities: parsed.entities,
         sourceText,
+        endsAt: channelSettings?.defaultEndsAt,
         requiredChannels: channelSettings?.requiredChannels ?? [],
         miniAppButtonColor: channelSettings?.miniAppButtonColor,
         buttonStyle: channelSettings?.buttonStyle
@@ -354,4 +547,18 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 
 export function selectAndCloseGiveaway(giveaway, random) {
   return pickWinners(giveaway, random);
+}
+
+function contestSettingsKeyboard(giveaway) {
+  const keyboard = new InlineKeyboard()
+    .text('✏️ Название конкурса', `contest_name:${giveaway.id}`).row()
+    .text('📋 Условия', `contest_conditions:${giveaway.id}`).row()
+    .text('📝 Описание', `contest_description:${giveaway.id}`).row()
+    .text('🎨 Кнопка', `contest_button:${giveaway.id}`).row()
+    .text('⏰ Итоги конкурса', `contest_ends:${giveaway.id}`).row()
+    .text('🖼 Медиа', `contest_media:${giveaway.id}`).row()
+    .text('🚀 Опубликовать', `contest_publish:${giveaway.id}`).row();
+  if (giveaway.status === 'active') keyboard.text('🏁 Завершить сейчас', `contest_finish:${giveaway.id}`).row();
+  if (giveaway.status === 'draft') keyboard.text('🗑 Удалить черновик', `contest_delete:${giveaway.id}`).row();
+  return keyboard.text('⬅️ К списку конкурсов', `contests_menu:${giveaway.channelId}`);
 }

@@ -22,7 +22,7 @@ export function createGiveaway(input, now = new Date()) {
     media: input.media ?? null,
     entities: Array.isArray(input.entities) ? input.entities : [],
     winnersCount,
-    status: 'active',
+    status: input.status ?? 'active',
     participants: [],
     winners: [],
     createdAt: now.toISOString(),

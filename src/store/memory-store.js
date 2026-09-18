@@ -13,6 +13,10 @@ export class MemoryStore {
     return this.giveaways.get(id) ?? null;
   }
 
+  async deleteGiveaway(id) {
+    this.giveaways.delete(id);
+  }
+
   async listGiveaways() {
     return [...this.giveaways.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
