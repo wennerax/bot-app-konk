@@ -70,9 +70,14 @@ document.querySelector('#back').addEventListener('click', () => { participation.
 
 async function load() {
   userLabel.textContent = telegram?.initDataUnsafe?.user?.first_name ?? 'Гость Telegram';
-  const response = await fetch('/api/giveaways');
+  const headers = { 'x-telegram-init-data': telegram?.initData ?? '' };
+  const response = selectedId
+    ? await fetch(`/api/giveaways/${encodeURIComponent(selectedId)}`)
+    : await fetch('/api/my-participations', { headers });
   const giveaways = await response.json();
-  render(giveaways);
+  if (!response.ok) throw new Error(giveaways.error);
+  render(Array.isArray(giveaways) ? giveaways : [giveaways]);
+  if (!selectedId && !giveaways.length) list.innerHTML = '<p class="empty">Ты пока не участвуешь ни в одном конкурсе.</p>';
   if (selectedId) {
     const giveaway = giveaways.find((item) => item.id === selectedId);
     if (giveaway) openParticipation(giveaway);

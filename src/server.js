@@ -28,6 +28,12 @@ export function buildServer({ bot, store, botToken } = {}) {
     };
   });
   app.get('/api/giveaways', async () => giveawayStore.listGiveaways());
+  app.get('/api/my-participations', async (request, reply) => {
+    const user = validateWebAppInitData(request.headers['x-telegram-init-data'], botToken);
+    if (!user) return reply.code(401).send({ error: 'Недействительные данные Telegram' });
+    const giveaways = await giveawayStore.listGiveaways();
+    return giveaways.filter((giveaway) => giveaway.participants.includes(String(user.id)));
+  });
   app.get('/api/giveaways/:id', async (request, reply) => {
     const giveaway = await giveawayStore.getGiveaway(request.params.id);
     if (!giveaway) return reply.code(404).send({ error: 'Конкурс не найден' });

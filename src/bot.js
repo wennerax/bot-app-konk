@@ -33,6 +33,7 @@ function channelSettingsKeyboard(channel) {
 
 export function createBot({ token, store, publicUrl, miniAppName, managedChannels = [] } = {}) {
   const bot = new Bot(token);
+  const pendingActions = new Map();
 
   bot.catch((error) => {
     console.error('Telegram update error:', error.error?.description ?? error.message);
@@ -130,7 +131,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
   bot.callbackQuery(/^giveaway_help:(.+)$/, async (context) => {
     await context.answerCallbackQuery();
     const channelId = context.match[1];
-    return context.editMessageText(`🎁 Создание конкурса\n\nОтправьте боту команду:\n/newgiveaway Название | количество победителей | ${channelId}\n\nПример:\n/newgiveaway Билеты | 2 | ${channelId}`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${channelId}`) });
+    pendingActions.set(String(context.from.id), { type: 'create', channelId });
+    return context.editMessageText(`🎁 Создание конкурса\n\nТеперь отправьте одним сообщением:\nНазвание конкурса | количество победителей\n\nПример:\nБилеты на концерт | 2`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${channelId}`) });
   });
 
   bot.callbackQuery(/^conditions_help:(.+)$/, async (context) => {
@@ -139,7 +141,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     const conditions = channel?.requiredChannels?.length
       ? channel.requiredChannels.map((item) => `• ${item.title} (${item.id})`).join('\n')
       : 'Не настроены';
-    return context.editMessageText(`📋 Условия подписки\n\nТекущие обязательные каналы:\n${conditions}\n\nЧтобы настроить, отправьте боту:\n/setconditions ID_канала | @партнер1, @партнер2\n\nДля участия в самом канале добавьте его ID первым. Пустой список отключает проверку подписок.`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+    pendingActions.set(String(context.from.id), { type: 'conditions', channelId: context.match[1] });
+    return context.editMessageText(`📋 Условия подписки\n\nТекущие обязательные каналы:\n${conditions}\n\nТеперь отправьте партнёров через запятую:\n@partner1, @partner2\n\nСам канал конкурса добавляется автоматически. Чтобы убрать партнёров, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
   });
 
   bot.callbackQuery(/^color_help:(.+)$/, async (context) => {
@@ -149,7 +152,75 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 
   bot.callbackQuery(/^media_help:(.+)$/, async (context) => {
     await context.answerCallbackQuery();
-    return context.editMessageText(`🖼 Медиа поста\n\nОтправьте боту фото, видео или документ, затем ответьте на него командой:\n/newgiveaway Название | 2 | ${context.match[1]}\n\nМедиа будет опубликовано вместе с конкурсом.`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+    pendingActions.set(String(context.from.id), { type: 'media', channelId: context.match[1] });
+    return context.editMessageText('🖼 Медиа поста\n\nОтправьте фото, видео или документ с подписью:\nНазвание конкурса | количество победителей\n\nПример: Билеты | 2', { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+  });
+
+  bot.on('message', async (context, next) => {
+    const action = pendingActions.get(String(context.from.id));
+    if (!action || action.type !== 'media') return next();
+    const source = context.msg;
+    const caption = source.caption ?? '';
+    const [title, winnersText] = caption.split('|').map((part) => part.trim());
+    const media = source.photo?.at(-1) ? { type: 'photo', fileId: source.photo.at(-1).file_id }
+      : source.video ? { type: 'video', fileId: source.video.file_id }
+        : source.document ? { type: 'document', fileId: source.document.file_id } : null;
+    if (!media || !title || !Number.isInteger(Number(winnersText)) || Number(winnersText) < 1) {
+      return context.reply('Отправьте фото, видео или документ с подписью: Название конкурса | количество победителей');
+    }
+    pendingActions.delete(String(context.from.id));
+    try {
+      const moderator = await bot.api.getChatMember(action.channelId, context.from.id);
+      if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
+      const channelSettings = await store.getChannel(action.channelId);
+      const giveaway = createGiveaway({ title, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor });
+      await store.saveGiveaway(giveaway);
+      const username = (await bot.api.getMe()).username;
+      await publishGiveaway(bot, action.channelId, giveaway, getParticipationLink(username, giveaway.id));
+      return context.reply(`Конкурс с медиа опубликован: ${giveaway.title}`);
+    } catch (error) {
+      return context.reply(`Не удалось опубликовать медиа-конкурс: ${error.message}`);
+    }
+  });
+
+  bot.on('message:text', async (context, next) => {
+    const action = pendingActions.get(String(context.from.id));
+    if (!action || context.msg.text.startsWith('/')) return next();
+    pendingActions.delete(String(context.from.id));
+    if (action.type === 'create') {
+      const [title, winnersText] = context.msg.text.split('|').map((part) => part.trim());
+      if (!title || !Number.isInteger(Number(winnersText)) || Number(winnersText) < 1) {
+        return context.reply('Формат: Название конкурса | количество победителей');
+      }
+      try {
+        const moderator = await bot.api.getChatMember(action.channelId, context.from.id);
+        if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
+        const channelSettings = await store.getChannel(action.channelId);
+        const giveaway = createGiveaway({ title, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor });
+        await store.saveGiveaway(giveaway);
+        const username = (await bot.api.getMe()).username;
+        await publishGiveaway(bot, action.channelId, giveaway, getParticipationLink(username, giveaway.id));
+        return context.reply(`Конкурс опубликован в канале: ${giveaway.title}`);
+      } catch (error) {
+        return context.reply(`Не удалось создать конкурс: ${error.message}`);
+      }
+    }
+    if (action.type === 'conditions') {
+      const references = context.msg.text.toLowerCase() === 'нет' ? [] : context.msg.text.split(',').map((item) => item.trim()).filter(Boolean);
+      try {
+        const source = await bot.api.getChat(action.channelId);
+        const requiredChannels = [{ id: source.id, title: source.title ?? action.channelId, url: source.username ? `https://t.me/${source.username}` : null }];
+        for (const reference of references) {
+          const chat = await bot.api.getChat(reference);
+          requiredChannels.push({ id: chat.id, title: chat.title ?? reference, url: chat.username ? `https://t.me/${chat.username}` : null });
+        }
+        const channel = await store.getChannel(action.channelId) ?? { id: action.channelId, title: action.channelId };
+        await store.saveChannel({ ...channel, requiredChannels });
+        return context.reply(`Условия сохранены. Обязательных каналов: ${requiredChannels.length}.`);
+      } catch (error) {
+        return context.reply(`Не удалось сохранить канал: ${error.message}`);
+      }
+    }
   });
 
   bot.command('setconditions', async (context) => {
