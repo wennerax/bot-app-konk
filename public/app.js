@@ -93,12 +93,13 @@ async function load() {
     list.innerHTML = '<p class="empty">Открой Mini App из Telegram, чтобы увидеть свои участия.</p>';
     return;
   }
-  const giveaways = await response.json();
+  const payload = await response.json();
   if (!response.ok) {
-    list.innerHTML = `<p class="empty">${giveaways.error || `Не удалось загрузить конкурсы (${response.status})`}</p>`;
+    list.innerHTML = `<p class="empty">${payload.error || `Не удалось загрузить конкурсы (${response.status})`}</p>`;
     return;
   }
-  render(Array.isArray(giveaways) ? giveaways : [giveaways]);
+  const giveaways = Array.isArray(payload) ? payload : [payload];
+  render(giveaways);
   if (!selectedId && !giveaways.length) list.innerHTML = '<p class="empty">Ты пока не участвуешь ни в одном конкурсе.</p>';
   if (selectedId) {
     const giveaway = giveaways.find((item) => item.id === selectedId);
