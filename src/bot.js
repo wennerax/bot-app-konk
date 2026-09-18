@@ -2,27 +2,6 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from './domain/giveaway.js';
 import { checkRequiredChannels, findAdminChannels } from './services/subscription.js';
 
-function escapeTelegramHtml(value) {
-  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-}
-
-function buildCustomEmojiHtml(text, entities) {
-  const customEntities = entities
-    .filter((entity) => entity.type === 'custom_emoji' && entity.custom_emoji_id)
-    .sort((left, right) => left.offset - right.offset);
-  if (!customEntities.length) return null;
-
-  let cursor = 0;
-  let html = '';
-  for (const entity of customEntities) {
-    if (entity.offset < cursor) continue;
-    html += escapeTelegramHtml(text.slice(cursor, entity.offset));
-    html += `<tg-emoji emoji-id="${entity.custom_emoji_id}">🙂</tg-emoji>`;
-    cursor = entity.offset + entity.length;
-  }
-  return html + escapeTelegramHtml(text.slice(cursor));
-}
-
 function remapPublishedEntities(text, title, description, entities) {
   const descriptionStart = 3 + utf16Length(title) + 2;
   const outputDescriptionStart = utf16Length(`🎁 ${title}\n\n`);
@@ -43,10 +22,20 @@ function normalizeCustomEntities(entities = []) {
 function buildPublishText(title, description, entities) {
   const prefix = `🎁 ${title}\n\n`;
   const sourceDescriptionStart = 3 + utf16Length(title) + 2;
-  const publishedEntities = entities
-    .filter((entity) => entity.offset >= sourceDescriptionStart)
-    .map((entity) => ({ ...entity, offset: utf16Length(prefix) + entity.offset - sourceDescriptionStart }));
-  return { text: prefix + description, entities: publishedEntities };
+  const customEntities = entities
+    .filter((entity) => entity.type === 'custom_emoji' && entity.offset >= sourceDescriptionStart)
+    .sort((left, right) => left.offset - right.offset);
+  let output = description;
+  const publishedEntities = [];
+  let removedUnits = 0;
+  for (const entity of customEntities) {
+    const relativeOffset = entity.offset - sourceDescriptionStart - removedUnits;
+    if (relativeOffset < 0 || relativeOffset >= utf16Length(output)) continue;
+    output = `${output.slice(0, relativeOffset)}🙂${output.slice(relativeOffset + entity.length)}`;
+    publishedEntities.push({ ...entity, offset: utf16Length(prefix) + relativeOffset, length: 2 });
+    removedUnits += entity.length - 2;
+  }
+  return { text: prefix + output, entities: publishedEntities };
 }
 
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
@@ -56,19 +45,16 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
     : { text: `🎁 ${giveaway.title}\n\nНажми кнопку, чтобы проверить условия и участвовать.`, entities: [] };
   const text = published.text;
   const publishedEntities = published.entities;
-  const htmlText = buildCustomEmojiHtml(text, publishedEntities);
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
     url: miniAppUrl,
     style: giveaway.buttonStyle ?? 'primary'
   });
-  const options = htmlText
-    ? { reply_markup: keyboard, parse_mode: 'HTML' }
-    : { reply_markup: keyboard };
-  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : {}), reply_markup: keyboard });
-  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : {}), reply_markup: keyboard });
-  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : {}), reply_markup: keyboard });
-  return bot.api.sendMessage(channelId, htmlText ?? text, options);
+  const options = { reply_markup: keyboard, ...(publishedEntities.length ? { entities: publishedEntities } : {}) };
+  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  return bot.api.sendMessage(channelId, text, options);
 }
 
 function utf16Length(value) {
