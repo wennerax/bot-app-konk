@@ -73,7 +73,9 @@ async function load() {
   const headers = { 'x-telegram-init-data': telegram?.initData ?? '' };
   const response = selectedId
     ? await fetch(`/api/giveaways/${encodeURIComponent(selectedId)}`)
-    : await fetch('/api/my-participations', { headers });
+    : telegram?.initData
+      ? await fetch('/api/my-participations', { headers })
+      : await fetch('/api/giveaways');
   const giveaways = await response.json();
   if (!response.ok) throw new Error(giveaways.error);
   render(Array.isArray(giveaways) ? giveaways : [giveaways]);

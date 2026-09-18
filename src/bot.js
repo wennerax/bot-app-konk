@@ -12,6 +12,28 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
   return bot.api.sendMessage(channelId, text, options);
 }
 
+function utf16Length(value) {
+  return [...value].reduce((total, character) => total + (character.codePointAt(0) > 0xffff ? 2 : 1), 0);
+}
+
+function parseGiveawayInput(text, entities = []) {
+  const [titlePart, winnersText, ...descriptionParts] = text.split('|').map((part) => part.trim());
+  const title = titlePart ?? '';
+  const description = descriptionParts.join(' | ');
+  const descriptionStart = title.length + 1;
+  const outputTitleStart = 3;
+  const outputDescriptionStart = outputTitleStart + utf16Length(title) + 2;
+  const mappedEntities = entities.flatMap((entity) => {
+    const end = entity.offset + entity.length;
+    if (entity.offset >= 0 && end <= title.length) return [{ ...entity, offset: outputTitleStart + entity.offset }];
+    if (description && entity.offset >= descriptionStart && end <= descriptionStart + description.length) {
+      return [{ ...entity, offset: outputDescriptionStart + entity.offset - descriptionStart }];
+    }
+    return [];
+  });
+  return { title, winnersText, description, entities: mappedEntities };
+}
+
 function channelListKeyboard(channels) {
   const keyboard = new InlineKeyboard();
   for (const channel of channels) {
@@ -132,7 +154,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     await context.answerCallbackQuery();
     const channelId = context.match[1];
     pendingActions.set(String(context.from.id), { type: 'create', channelId });
-    return context.editMessageText(`🎁 Создание конкурса\n\nТеперь отправьте одним сообщением:\nНазвание конкурса | количество победителей\n\nПример:\nБилеты на концерт | 2`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${channelId}`) });
+    return context.editMessageText(`🎁 Создание конкурса\n\nТеперь отправьте одним сообщением:\nНазвание конкурса | количество победителей | описание\n\nПример:\nБилеты на концерт | 2 | Подпишись на канал и участвуй`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${channelId}`) });
   });
 
   bot.callbackQuery(/^conditions_help:(.+)$/, async (context) => {
@@ -161,7 +183,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     if (!action || action.type !== 'media') return next();
     const source = context.msg;
     const caption = source.caption ?? '';
-    const [title, winnersText] = caption.split('|').map((part) => part.trim());
+    const parsed = parseGiveawayInput(caption, source.caption_entities);
+    const { title, winnersText, description, entities } = parsed;
     const media = source.photo?.at(-1) ? { type: 'photo', fileId: source.photo.at(-1).file_id }
       : source.video ? { type: 'video', fileId: source.video.file_id }
         : source.document ? { type: 'document', fileId: source.document.file_id } : null;
@@ -173,7 +196,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       const moderator = await bot.api.getChatMember(action.channelId, context.from.id);
       if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
       const channelSettings = await store.getChannel(action.channelId);
-      const giveaway = createGiveaway({ title, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor });
+      const giveaway = createGiveaway({ title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor });
       await store.saveGiveaway(giveaway);
       const username = (await bot.api.getMe()).username;
       await publishGiveaway(bot, action.channelId, giveaway, getParticipationLink(username, giveaway.id));
@@ -188,7 +211,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     if (!action || context.msg.text.startsWith('/')) return next();
     pendingActions.delete(String(context.from.id));
     if (action.type === 'create') {
-      const [title, winnersText] = context.msg.text.split('|').map((part) => part.trim());
+      const parsed = parseGiveawayInput(context.msg.text, context.msg.entities);
+      const { title, winnersText, description, entities } = parsed;
       if (!title || !Number.isInteger(Number(winnersText)) || Number(winnersText) < 1) {
         return context.reply('Формат: Название конкурса | количество победителей');
       }
@@ -196,7 +220,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         const moderator = await bot.api.getChatMember(action.channelId, context.from.id);
         if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
         const channelSettings = await store.getChannel(action.channelId);
-        const giveaway = createGiveaway({ title, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor });
+        const giveaway = createGiveaway({ title, description, entities, sourceText: context.msg.text, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor });
         await store.saveGiveaway(giveaway);
         const username = (await bot.api.getMe()).username;
         await publishGiveaway(bot, action.channelId, giveaway, getParticipationLink(username, giveaway.id));
@@ -268,19 +292,17 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       const media = sourceMessage?.photo?.at(-1) ? { type: 'photo', fileId: sourceMessage.photo.at(-1).file_id }
         : sourceMessage?.video ? { type: 'video', fileId: sourceMessage.video.file_id }
           : sourceMessage?.document ? { type: 'document', fileId: sourceMessage.document.file_id } : null;
-      const sourceText = context.msg?.text ?? context.msg?.caption ?? '';
-      const titleStart = sourceText.indexOf(title);
-      const titleEnd = titleStart + title.length;
-      const entities = (context.msg?.entities ?? context.msg?.caption_entities ?? [])
-        .filter((entity) => entity.offset >= titleStart && entity.offset + entity.length <= titleEnd)
-        .map((entity) => ({ ...entity, offset: entity.offset - titleStart + 3 }));
+      const sourceText = context.match.trim();
+      const parsed = parseGiveawayInput(sourceText);
       const channelSettings = await store.getChannel(channelId);
       const giveaway = createGiveaway({
-        title,
-        winnersCount: winnersText,
+        title: parsed.title,
+        description: parsed.description,
+        winnersCount: parsed.winnersText,
         channelId,
         media,
-        entities,
+        entities: parsed.entities,
+        sourceText,
         requiredChannels: channelSettings?.requiredChannels ?? [],
         miniAppButtonColor: channelSettings?.miniAppButtonColor
       });
