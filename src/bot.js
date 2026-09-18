@@ -61,6 +61,17 @@ function channelSettingsKeyboard(channel) {
   return keyboard.text('⬅️ К списку каналов', 'channels_back').row().text('❌ Закрыть', 'channels_close');
 }
 
+function colorPaletteKeyboard(channelId) {
+  return new InlineKeyboard()
+    .text('🔴 Красный', `color_set:${channelId}:#ef4444`)
+    .text('🟠 Коралловый', `color_set:${channelId}:#f97360`).row()
+    .text('🟡 Жёлтый', `color_set:${channelId}:#e6ff54`)
+    .text('🟢 Зелёный', `color_set:${channelId}:#35c98b`).row()
+    .text('🔵 Синий', `color_set:${channelId}:#3b82f6`)
+    .text('⚫ Графит', `color_set:${channelId}:#222222`).row()
+    .text('⬅️ Назад', `channel_settings:${channelId}`);
+}
+
 export function createBot({ token, store, publicUrl, miniAppName, managedChannels = [] } = {}) {
   const bot = new Bot(token);
   const pendingActions = new Map();
@@ -176,8 +187,20 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
   });
 
   bot.callbackQuery(/^color_help:(.+)$/, async (context) => {
-    await context.answerCallbackQuery('Цвет кнопки под постом Telegram не настраивается');
-    return context.editMessageText('🎨 Цвет кнопки\n\nTelegram не позволяет менять цвет inline-кнопки под постом: его задаёт приложение Telegram.\n\nЦвет кнопки внутри Mini App можно изменить командой:\n/setappcolor ID_канала | #ff5a36', { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+    await context.answerCallbackQuery();
+    const channel = await store.getChannel(context.match[1]);
+    return context.editMessageText(`🎨 Цвет кнопки Mini App\n\nТекущий цвет: ${channel?.miniAppButtonColor ?? '#e6ff54'}\n\nВыберите цвет ниже.\n\nЦвет кнопки непосредственно под постом Telegram изменить нельзя: это ограничение Bot API.`, { reply_markup: colorPaletteKeyboard(context.match[1]) });
+  });
+
+  bot.callbackQuery(/^color_set:(.+):(#(?:[0-9a-f]{6}))$/, async (context) => {
+    await context.answerCallbackQuery('Цвет сохранён');
+    const channelId = context.match[1];
+    const color = context.match[2];
+    const moderator = await bot.api.getChatMember(channelId, context.from.id);
+    if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
+    const channel = await store.getChannel(channelId) ?? { id: channelId, title: channelId };
+    await store.saveChannel({ ...channel, miniAppButtonColor: color });
+    return context.editMessageText(`🎨 Цвет Mini App сохранён: ${color}\n\nНовые конкурсы будут использовать этот цвет внутри Mini App.`, { reply_markup: channelSettingsKeyboard({ ...channel, miniAppButtonColor: color }) });
   });
 
   bot.callbackQuery(/^media_help:(.+)$/, async (context) => {

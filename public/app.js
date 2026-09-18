@@ -48,6 +48,9 @@ function render(giveaways) {
 
 function openParticipation(giveaway) {
   selectedGiveaway = giveaway;
+  const accent = giveaway.miniAppButtonColor || '#e6ff54';
+  document.documentElement.style.setProperty('--accent', accent);
+  telegram?.MainButton?.setParams({ text: 'УЧАСТВОВАТЬ', color: accent, text_color: '#111111' });
   list.hidden = true;
   participation.hidden = false;
   status.textContent = 'Проверяем условия конкурса';
