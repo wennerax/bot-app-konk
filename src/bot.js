@@ -42,19 +42,16 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
       : {})
   }));
   const publishedEntities = remapPublishedEntities(text, giveaway.title, giveaway.description, entities);
-  const htmlText = customEmojiHtml(text, publishedEntities);
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
     url: miniAppUrl,
     style: giveaway.buttonStyle ?? 'primary'
   });
-  const options = htmlText
-    ? { reply_markup: keyboard, parse_mode: 'HTML' }
-    : { reply_markup: keyboard, ...(publishedEntities.length ? { entities: publishedEntities } : {}) };
-  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
-  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
-  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
-  return bot.api.sendMessage(channelId, htmlText ?? text, options);
+  const options = { reply_markup: keyboard, ...(publishedEntities.length ? { entities: publishedEntities } : {}) };
+  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  return bot.api.sendMessage(channelId, text, options);
 }
 
 function utf16Length(value) {
