@@ -15,6 +15,15 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
 export function createBot({ token, store, publicUrl, miniAppName, managedChannels = [] } = {}) {
   const bot = new Bot(token);
 
+  bot.catch((error) => {
+    console.error('Telegram update error:', error.error?.description ?? error.message);
+  });
+
+  bot.use(async (context, next) => {
+    console.log(`Telegram update received: ${context.update.update_id}`);
+    await next();
+  });
+
   bot.command('start', async (context) => {
     const payload = context.match?.trim();
     if (!payload?.startsWith('g_')) return context.reply('Привет! Открой конкурс из канала или используй /menu.');

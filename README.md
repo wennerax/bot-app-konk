@@ -13,6 +13,8 @@ Node.js-бот на grammY и Fastify с Mini App по адресу `https://bre
 
 На хосте задайте `PUBLIC_URL=https://bred.bothost.tech`; если переменная не задана, приложение использует этот адрес по умолчанию. Короткий адрес `https://bred` не подходит, потому что Telegram не сможет найти такой DNS-host. Для локального запуска можно задать `PUBLIC_URL=http://localhost:3000`, тогда бот использует long polling.
 
+Проверить, куда Telegram отправляет команды, можно по адресу `/api/telegram-status`. `webhookUrl` должен совпадать с реальным адресом приложения и заканчиваться на `/telegram/webhook`.
+
 `MANAGED_CHANNELS` принимает JSON, например:
 
 ```json

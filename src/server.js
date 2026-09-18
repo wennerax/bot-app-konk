@@ -16,6 +16,17 @@ export function buildServer({ bot, store, botToken } = {}) {
   app.register(fastifyStatic, { root: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public') });
   app.get('/', async (_, reply) => reply.sendFile('index.html'));
   app.get('/health', async () => ({ ok: true }));
+  app.get('/api/telegram-status', async (_, reply) => {
+    if (!bot) return reply.code(503).send({ ok: false, error: 'BOT_TOKEN не настроен' });
+    const info = await bot.api.getWebhookInfo();
+    return {
+      ok: true,
+      webhookUrl: info.url,
+      pendingUpdates: info.pending_update_count,
+      lastError: info.last_error_message ?? null,
+      lastErrorDate: info.last_error_date ?? null
+    };
+  });
   app.get('/api/giveaways', async () => giveawayStore.listGiveaways());
   app.get('/api/giveaways/:id', async (request, reply) => {
     const giveaway = await giveawayStore.getGiveaway(request.params.id);
@@ -53,7 +64,11 @@ export function buildServer({ bot, store, botToken } = {}) {
   });
   if (bot) {
     app.get('/telegram/webhook', async () => ({ ok: true, message: 'Telegram webhook endpoint is ready' }));
-    app.post('/telegram/webhook', async (request) => { await bot.handleUpdate(request.body); return { ok: true }; });
+    app.post('/telegram/webhook', async (request, reply) => {
+      console.log(`Telegram webhook POST received: ${request.body?.update_id ?? 'unknown'}`);
+      await bot.handleUpdate(request.body);
+      return reply.send({ ok: true });
+    });
   }
   return app;
 }
@@ -68,6 +83,7 @@ if (isDirectRun) {
   if (bot) {
     const publicUrl = new URL(config.publicUrl);
     const hasPublicHostname = publicUrl.hostname.includes('.') && publicUrl.hostname !== 'localhost';
+    console.log(`Configured public URL: ${config.publicUrl}`);
     if (publicUrl.protocol === 'https:' && hasPublicHostname) {
       try {
         await bot.api.setWebhook(`${config.publicUrl.replace(/\/$/, '')}/telegram/webhook`, { secret_token: config.webhookSecret });
