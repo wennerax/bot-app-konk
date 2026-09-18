@@ -60,7 +60,7 @@ test('sends remapped custom emoji entities when publishing', async () => {
   }, 'https://t.me/example?startapp=g_1');
 
   assert.equal(payload[0], '-1001');
-  assert.equal(payload[1], '🎁 Билеты\n\nПремиум ✅');
+  assert.equal(payload[1], '🎁 Билеты\n\nПремиум *');
   assert.deepEqual(payload[2].entities[0], {
     type: 'custom_emoji',
     offset: 19,

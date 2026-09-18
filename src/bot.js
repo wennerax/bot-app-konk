@@ -19,10 +19,37 @@ function normalizeCustomEntities(entities = []) {
       : entity);
 }
 
+function buildPublishText(title, description, entities) {
+  const prefix = `🎁 ${title}\n\n`;
+  const sourceDescriptionStart = 3 + utf16Length(title) + 2;
+  const sorted = entities
+    .filter((entity) => entity.type === 'custom_emoji' && entity.custom_emoji_id)
+    .sort((left, right) => left.offset - right.offset);
+  const parts = [];
+  const publishedEntities = [];
+  let sourceCursor = 0;
+  let outputCursor = 0;
+  for (const entity of sorted) {
+    const relativeOffset = entity.offset - sourceDescriptionStart;
+    if (relativeOffset < 0 || relativeOffset >= utf16Length(description)) continue;
+    const before = description.slice(sourceCursor, relativeOffset);
+    parts.push(before, '*');
+    outputCursor += utf16Length(before);
+    publishedEntities.push({ ...entity, offset: utf16Length(prefix) + outputCursor, length: 1 });
+    outputCursor += 1;
+    sourceCursor = relativeOffset + entity.length;
+  }
+  parts.push(description.slice(sourceCursor));
+  return { text: prefix + parts.join(''), entities: publishedEntities };
+}
+
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
-  const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
   const entities = normalizeCustomEntities(giveaway.entities);
-  const publishedEntities = remapPublishedEntities(text, giveaway.title, giveaway.description, entities);
+  const published = giveaway.description
+    ? buildPublishText(giveaway.title, giveaway.description, entities)
+    : { text: `🎁 ${giveaway.title}\n\nНажми кнопку, чтобы проверить условия и участвовать.`, entities: [] };
+  const text = published.text;
+  const publishedEntities = published.entities;
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
     url: miniAppUrl,
