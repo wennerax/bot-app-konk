@@ -24,6 +24,30 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     await next();
   });
 
+  for (const channel of managedChannels) {
+    store.saveChannel(channel).catch((error) => console.error('Не удалось сохранить канал:', error.message));
+  }
+
+  const rememberChannel = async (chat) => {
+    if (chat?.type !== 'channel') return;
+    await store.saveChannel({
+      id: chat.id,
+      title: chat.title ?? 'Без названия',
+      username: chat.username ?? null,
+      url: chat.username ? `https://t.me/${chat.username}` : null
+    });
+  };
+
+  bot.on('my_chat_member', async (context, next) => {
+    await rememberChannel(context.chat);
+    await next();
+  });
+
+  bot.on('channel_post', async (context, next) => {
+    await rememberChannel(context.chat);
+    await next();
+  });
+
   bot.api.setMyCommands([
     { command: 'start', description: 'Открыть конкурс' },
     { command: 'menu', description: 'Мои каналы' },
@@ -61,11 +85,9 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
   });
 
   bot.command('menu', async (context) => {
-    if (!managedChannels.length) {
-      return context.reply('Каналы ещё не настроены. Добавь MANAGED_CHANNELS в переменные хоста, например:\n[{"id":"-1001234567890","title":"БРЕД-РОЗЫГРЫШИ","url":"https://t.me/your_channel"}]');
-    }
-    const channels = await findAdminChannels(bot, context.from.id, managedChannels);
-    if (!channels.length) return context.reply('Каналы с нужными правами не найдены. Добавь бота администратором канала.');
+    const discoveredChannels = await store.listChannels();
+    const channels = await findAdminChannels(bot, context.from.id, discoveredChannels);
+    if (!channels.length) return context.reply('Каналы пока не обнаружены. Добавь бота администратором канала и создай/отредактируй пост в канале, чтобы Telegram прислал событие боту.');
     const lines = channels.map((channel) => `• ${channel.title} (${channel.id})`);
     return context.reply(`Доступные каналы для конкурсов:\n${lines.join('\n')}\n\nMini App: ${publicUrl}`);
   });

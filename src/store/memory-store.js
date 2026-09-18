@@ -1,6 +1,7 @@
 export class MemoryStore {
   constructor() {
     this.giveaways = new Map();
+    this.channels = new Map();
   }
 
   async saveGiveaway(giveaway) {
@@ -14,5 +15,14 @@ export class MemoryStore {
 
   async listGiveaways() {
     return [...this.giveaways.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async saveChannel(channel) {
+    this.channels.set(String(channel.id), { ...channel, id: String(channel.id) });
+    return this.channels.get(String(channel.id));
+  }
+
+  async listChannels() {
+    return [...this.channels.values()];
   }
 }
