@@ -14,6 +14,7 @@ export function buildServer({ bot, store, botToken } = {}) {
   const app = Fastify({ logger: true });
   const giveawayStore = store ?? new MemoryStore();
   app.register(fastifyStatic, { root: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public') });
+  app.get('/', async (_, reply) => reply.sendFile('index.html'));
   app.get('/health', async () => ({ ok: true }));
   app.get('/api/giveaways', async () => giveawayStore.listGiveaways());
   app.get('/api/giveaways/:id', async (request, reply) => {

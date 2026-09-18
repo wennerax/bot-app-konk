@@ -30,3 +30,11 @@ test('API returns 404 for unknown giveaway', async () => {
   assert.equal(response.statusCode, 404);
   await app.close();
 });
+
+test('Mini App entry page responds at root', async () => {
+  const app = buildServer({ store: new MemoryStore() });
+  const response = await app.inject({ method: 'GET', url: '/' });
+  assert.equal(response.statusCode, 200);
+  assert.match(response.headers['content-type'], /text\/html/);
+  await app.close();
+});
