@@ -18,14 +18,33 @@ test('preserves custom emoji entity data in giveaway description', () => {
   const parsed = parseGiveawayInput(text, [{
     type: 'custom_emoji',
     offset: emojiOffset,
-    length: 2,
+    length: 1,
     custom_emoji_id: '987654321'
   }]);
 
   assert.deepEqual(parsed.entities, [{
     type: 'custom_emoji',
     offset: 3 + 'Приз'.length + 2,
-    length: 2,
+    length: 1,
     custom_emoji_id: '987654321'
+  }]);
+});
+
+test('keeps a custom emoji at the end of the description after trimming', () => {
+  const text = 'Билеты | 2 | Подпишись и участвуй ✅';
+  const emojiOffset = text.indexOf('✅');
+  const parsed = parseGiveawayInput(text, [{
+    type: 'custom_emoji',
+    offset: emojiOffset,
+    length: 1,
+    custom_emoji_id: '555666777'
+  }]);
+
+  assert.equal(parsed.description, 'Подпишись и участвуй ✅');
+  assert.deepEqual(parsed.entities, [{
+    type: 'custom_emoji',
+    offset: 3 + 'Билеты'.length + 2 + 'Подпишись и участвуй '.length,
+    length: 1,
+    custom_emoji_id: '555666777'
   }]);
 });

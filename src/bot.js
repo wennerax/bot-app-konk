@@ -20,6 +20,10 @@ function utf16Length(value) {
   return [...value].reduce((total, character) => total + (character.codePointAt(0) > 0xffff ? 2 : 1), 0);
 }
 
+function getMessageEntities(message) {
+  return message?.entities ?? message?.caption_entities ?? [];
+}
+
 export function parseGiveawayInput(text, entities = []) {
   const firstPipe = text.indexOf('|');
   const secondPipe = firstPipe < 0 ? -1 : text.indexOf('|', firstPipe + 1);
@@ -453,7 +457,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       return context.reply('Медиа добавлено в конкурс.', { reply_markup: contestSettingsKeyboard(giveaway) });
     }
     const caption = source.caption ?? '';
-    const parsed = parseGiveawayInput(caption, source.caption_entities);
+    const parsed = parseGiveawayInput(caption, getMessageEntities(source));
     const { title, winnersText, description, entities } = parsed;
     const media = source.photo?.at(-1) ? { type: 'photo', fileId: source.photo.at(-1).file_id }
       : source.video ? { type: 'video', fileId: source.video.file_id }
@@ -478,7 +482,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     if (!action || context.msg.text.startsWith('/')) return next();
     pendingActions.delete(String(context.from.id));
     if (action.type === 'create') {
-      const parsed = parseGiveawayInput(context.msg.text, context.msg.entities);
+      const parsed = parseGiveawayInput(context.msg.text, getMessageEntities(context.msg));
       const { title, winnersText, description, entities } = parsed;
       if (!title || !Number.isInteger(Number(winnersText)) || Number(winnersText) < 1) {
         return context.reply('Формат: Название конкурса | количество победителей');
@@ -502,14 +506,14 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
           giveaway.title = title;
           giveaway.entities = [
             ...(giveaway.entities ?? []).filter((entity) => entity.offset >= 3 + utf16Length(title) + 2),
-            ...(context.msg.entities ?? []).map((entity) => ({ ...entity, offset: 3 + entity.offset }))
+            ...getMessageEntities(context.msg).map((entity) => ({ ...entity, offset: 3 + entity.offset }))
           ];
         }
         if (action.type === 'contest_description') {
           giveaway.description = context.msg.text.trim();
           const titleLength = utf16Length(giveaway.title);
           const titleEntities = (giveaway.entities ?? []).filter((entity) => entity.offset >= 3 && entity.offset < 3 + titleLength);
-          giveaway.entities = [...titleEntities, ...remapDescriptionEntities(giveaway.description, context.msg.entities, giveaway.title, context.msg.text)];
+          giveaway.entities = [...titleEntities, ...remapDescriptionEntities(giveaway.description, getMessageEntities(context.msg), giveaway.title, context.msg.text)];
           giveaway.sourceText = `${giveaway.title} | ${giveaway.winnersCount} | ${giveaway.description}`;
         }
         if (action.type === 'contest_ends') {
