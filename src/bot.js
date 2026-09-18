@@ -324,7 +324,9 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     await context.answerCallbackQuery('Партнёр удалён');
     const giveaway = await store.getGiveaway(context.match[1]);
     if (!giveaway) return context.reply('Конкурс не найден.');
-    giveaway.requiredChannels = (giveaway.requiredChannels ?? []).filter((channel) => String(channel.id) !== context.match[2]);
+    const partnerIndex = Number(context.match[2]);
+    if (!Number.isInteger(partnerIndex) || partnerIndex < 0 || partnerIndex >= giveaway.requiredChannels.length) return context.reply('Партнёр уже удалён.');
+    giveaway.requiredChannels.splice(partnerIndex, 1);
     await store.saveGiveaway(giveaway);
     return context.editMessageText('📋 Условия конкурса\n\nВыберите партнёра для удаления или добавьте нового:', { reply_markup: contestConditionsKeyboard(giveaway) });
   });
@@ -610,8 +612,8 @@ function contestSettingsKeyboard(giveaway) {
 
 function contestConditionsKeyboard(giveaway) {
   const keyboard = new InlineKeyboard();
-  for (const channel of giveaway.requiredChannels ?? []) {
-    keyboard.text(`❌ ${channel.title}`, `contest_partner_remove:${giveaway.id}:${channel.id}`).row();
+  for (const [index, channel] of (giveaway.requiredChannels ?? []).entries()) {
+    keyboard.text(`❌ ${channel.title}`, `contest_partner_remove:${giveaway.id}:${index}`).row();
   }
   keyboard.text('➕ Добавить партнёров', `contest_conditions_edit:${giveaway.id}`).row();
   return keyboard.text('⬅️ Назад', `contest_settings:${giveaway.id}`);
