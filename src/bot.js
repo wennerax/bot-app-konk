@@ -215,7 +215,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       });
       await store.saveGiveaway(giveaway);
       const username = (await bot.api.getMe()).username;
-      await publishGiveaway(bot, channelId, giveaway, getParticipationLink(username, giveaway.id, miniAppName));
+      await publishGiveaway(bot, channelId, giveaway, getParticipationLink(username, giveaway.id));
       await context.reply(`Конкурс создан: ${giveaway.id}`);
     } catch (error) {
       await context.reply(`Не удалось создать конкурс: ${error.message}`);

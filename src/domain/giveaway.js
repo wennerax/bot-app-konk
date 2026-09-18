@@ -53,7 +53,6 @@ export function pickWinners(giveaway, random = Math.random) {
   return winners;
 }
 
-export function getParticipationLink(botUsername, giveawayId, miniAppName) {
-  const suffix = miniAppName ? `/${miniAppName}?startapp=g_${giveawayId}` : `?start=g_${giveawayId}`;
-  return `https://t.me/${botUsername}${suffix}`;
+export function getParticipationLink(botUsername, giveawayId) {
+  return `https://t.me/${botUsername}?startapp=g_${giveawayId}`;
 }

@@ -23,6 +23,5 @@ test('selects unique winners and closes the giveaway', () => {
 });
 
 test('builds a Telegram deep link', () => {
-  assert.equal(getParticipationLink('example_bot', 'giveaway-1'), 'https://t.me/example_bot?start=g_giveaway-1');
-  assert.equal(getParticipationLink('example_bot', 'giveaway-1', 'giveaway'), 'https://t.me/example_bot/giveaway?startapp=g_giveaway-1');
+  assert.equal(getParticipationLink('example_bot', 'giveaway-1'), 'https://t.me/example_bot?startapp=g_giveaway-1');
 });
