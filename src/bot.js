@@ -61,6 +61,9 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
   });
 
   bot.command('menu', async (context) => {
+    if (!managedChannels.length) {
+      return context.reply('Каналы ещё не настроены. Добавь MANAGED_CHANNELS в переменные хоста, например:\n[{"id":"-1001234567890","title":"БРЕД-РОЗЫГРЫШИ","url":"https://t.me/your_channel"}]');
+    }
     const channels = await findAdminChannels(bot, context.from.id, managedChannels);
     if (!channels.length) return context.reply('Каналы с нужными правами не найдены. Добавь бота администратором канала.');
     const lines = channels.map((channel) => `• ${channel.title} (${channel.id})`);
