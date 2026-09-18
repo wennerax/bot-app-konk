@@ -79,6 +79,7 @@ if (isDirectRun) {
   const store = new MemoryStore();
   const bot = config.botToken ? createBot({ token: config.botToken, store, publicUrl: config.publicUrl, miniAppName: process.env.MINI_APP_NAME, managedChannels: config.managedChannels }) : null;
   const app = buildServer({ bot, store, botToken: config.botToken });
+  if (bot) await bot.init();
   await app.listen({ port: config.port, host: '0.0.0.0' });
   if (bot) {
     const publicUrl = new URL(config.publicUrl);
