@@ -2,6 +2,37 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from './domain/giveaway.js';
 import { checkRequiredChannels, findAdminChannels } from './services/subscription.js';
 
+function escapeTelegramHtml(value) {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function customEmojiHtml(text, entities) {
+  const customEntities = entities
+    .filter((entity) => entity.type === 'custom_emoji' && entity.custom_emoji_id)
+    .sort((left, right) => left.offset - right.offset);
+  if (!customEntities.length) return null;
+
+  let cursor = 0;
+  let html = '';
+  for (const entity of customEntities) {
+    const length = [...text.slice(entity.offset)].at(0)?.length === 2 ? 2 : 1;
+    if (entity.offset < cursor) continue;
+    html += escapeTelegramHtml(text.slice(cursor, entity.offset));
+    html += `<tg-emoji emoji-id="${String(entity.custom_emoji_id).replace(/"/g, '')}">${escapeTelegramHtml(text.slice(entity.offset, entity.offset + length))}</tg-emoji>`;
+    cursor = entity.offset + length;
+  }
+  return html + escapeTelegramHtml(text.slice(cursor));
+}
+
+function remapPublishedEntities(text, title, description, entities) {
+  const descriptionStart = 3 + utf16Length(title) + 2;
+  const outputDescriptionStart = utf16Length(`🎁 ${title}\n\n`);
+  return entities.map((entity) => {
+    if (entity.offset < descriptionStart) return entity;
+    return { ...entity, offset: outputDescriptionStart + entity.offset - descriptionStart };
+  });
+}
+
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
   const entities = (giveaway.entities ?? []).map((entity) => ({
@@ -10,16 +41,20 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
       ? { custom_emoji_id: String(entity.custom_emoji_id) }
       : {})
   }));
+  const publishedEntities = remapPublishedEntities(text, giveaway.title, giveaway.description, entities);
+  const htmlText = customEmojiHtml(text, publishedEntities);
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
     url: miniAppUrl,
     style: giveaway.buttonStyle ?? 'primary'
   });
-  const options = { reply_markup: keyboard, ...(entities.length ? { entities } : {}) };
-  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, ...(entities.length ? { caption_entities: entities } : {}), reply_markup: keyboard });
-  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, ...(entities.length ? { caption_entities: entities } : {}), reply_markup: keyboard });
-  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: text, ...(entities.length ? { caption_entities: entities } : {}), reply_markup: keyboard });
-  return bot.api.sendMessage(channelId, text, options);
+  const options = htmlText
+    ? { reply_markup: keyboard, parse_mode: 'HTML' }
+    : { reply_markup: keyboard, ...(publishedEntities.length ? { entities: publishedEntities } : {}) };
+  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: htmlText ?? text, ...(htmlText ? { parse_mode: 'HTML' } : publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  return bot.api.sendMessage(channelId, htmlText ?? text, options);
 }
 
 function utf16Length(value) {
