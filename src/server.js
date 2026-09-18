@@ -87,6 +87,8 @@ if (isDirectRun) {
     if (publicUrl.protocol === 'https:' && hasPublicHostname) {
       try {
         await bot.api.setWebhook(`${config.publicUrl.replace(/\/$/, '')}/telegram/webhook`, { secret_token: config.webhookSecret });
+        const webhookInfo = await bot.api.getWebhookInfo();
+        console.log(`Telegram webhook configured: ${webhookInfo.url}`);
       } catch (error) {
         console.error(`Webhook не настроен для ${config.publicUrl}: ${error.description ?? error.message}`);
         console.error('Проверьте PUBLIC_URL: нужен полный публичный DNS-адрес, например https://bred.bothost.tech');

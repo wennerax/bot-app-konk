@@ -24,6 +24,12 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     await next();
   });
 
+  bot.api.setMyCommands([
+    { command: 'start', description: 'Открыть конкурс' },
+    { command: 'menu', description: 'Мои каналы' },
+    { command: 'newgiveaway', description: 'Создать конкурс' }
+  ]).catch((error) => console.error('Не удалось установить команды:', error.message));
+
   bot.command('start', async (context) => {
     const payload = context.match?.trim();
     if (!payload?.startsWith('g_')) return context.reply('Привет! Открой конкурс из канала или используй /menu.');
@@ -63,14 +69,18 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 
   bot.command('newgiveaway', async (context) => {
     const [title, winnersText, channelId] = context.match.split('|').map((part) => part.trim());
+    if (!title || !winnersText || !channelId) {
+      return context.reply('Формат команды:\n/newgiveaway Название конкурса | количество победителей | ID канала\n\nПример:\n/newgiveaway Билеты | 2 | -1001234567890');
+    }
     try {
       const moderator = await bot.api.getChatMember(channelId, context.from.id);
       if (!['creator', 'administrator'].includes(moderator.status)) {
         return context.reply('Создавать конкурсы может только администратор этого канала.');
       }
-      const media = context.msg?.photo?.at(-1) ? { type: 'photo', fileId: context.msg.photo.at(-1).file_id }
-        : context.msg?.video ? { type: 'video', fileId: context.msg.video.file_id }
-          : context.msg?.document ? { type: 'document', fileId: context.msg.document.file_id } : null;
+      const sourceMessage = context.msg?.reply_to_message ?? context.msg;
+      const media = sourceMessage?.photo?.at(-1) ? { type: 'photo', fileId: sourceMessage.photo.at(-1).file_id }
+        : sourceMessage?.video ? { type: 'video', fileId: sourceMessage.video.file_id }
+          : sourceMessage?.document ? { type: 'document', fileId: sourceMessage.document.file_id } : null;
       const sourceText = context.msg?.text ?? context.msg?.caption ?? '';
       const titleStart = sourceText.indexOf(title);
       const titleEnd = titleStart + title.length;
