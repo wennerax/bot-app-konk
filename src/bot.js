@@ -47,8 +47,24 @@ function parseGiveawayInput(text, entities = []) {
 }
 
 function parseDateInput(value) {
-  const date = new Date(value.replace(' ', 'T'));
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 3, Number(minute)));
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function formatMoscowDate(value) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    dateStyle: 'short',
+    timeStyle: 'short'
+  }).format(new Date(value));
+}
+
+function remapDescriptionEntities(description, entities, title) {
+  const descriptionStart = 3 + utf16Length(title) + 2;
+  return (entities ?? []).map((entity) => ({ ...entity, offset: descriptionStart + entity.offset }));
 }
 
 async function resolveRequiredChannels(bot, references) {
@@ -250,7 +266,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     await context.answerCallbackQuery();
     const giveaway = await store.getGiveaway(context.match[1]);
     if (!giveaway) return context.reply('Конкурс не найден.');
-    return context.editMessageText(`⚙️ Настройка конкурса\n\nНазвание: ${giveaway.title}\nУсловия: ${giveaway.requiredChannels.length}\nОписание: ${giveaway.description || 'не задано'}\nИтоги: ${giveaway.endsAt ? new Date(giveaway.endsAt).toLocaleString('ru-RU') : 'вручную'}\nМедиа: ${giveaway.media ? 'добавлено' : 'нет'}\nСтатус: ${giveaway.status}`, { reply_markup: contestSettingsKeyboard(giveaway) });
+    return context.editMessageText(`⚙️ Настройка конкурса\n\nНазвание: ${giveaway.title}\nУсловия: ${giveaway.requiredChannels.length}\nОписание: ${giveaway.description || 'не задано'}\nИтоги по Москве: ${giveaway.endsAt ? formatMoscowDate(giveaway.endsAt) : 'вручную'}\nМедиа: ${giveaway.media ? 'добавлено' : 'нет'}\nСтатус: ${giveaway.status}`, { reply_markup: contestSettingsKeyboard(giveaway) });
   });
 
   bot.callbackQuery(/^contest_publish:(.+)$/, async (context) => {
@@ -355,7 +371,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       const prompt = field === 'name' ? 'Отправьте новое название конкурса.'
         : field === 'description' ? 'Отправьте новое описание конкурса.'
           : field === 'conditions' ? 'Отправьте @партнёров через запятую или «нет».'
-            : 'Отправьте дату итогов YYYY-MM-DD HH:mm или «нет».';
+            : 'Отправьте дату итогов по Москве YYYY-MM-DD HH:mm или «нет».';
       return context.editMessageText(`✏️ ${prompt}`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `contest_settings:${giveaway.id}`) });
     });
   }
@@ -387,9 +403,9 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
   bot.callbackQuery(/^ends_at_help:(.+)$/, async (context) => {
     await context.answerCallbackQuery();
     const channel = await store.getChannel(context.match[1]);
-    const current = channel?.defaultEndsAt ? new Date(channel.defaultEndsAt).toLocaleString('ru-RU') : 'не задана';
+    const current = channel?.defaultEndsAt ? formatMoscowDate(channel.defaultEndsAt) : 'не задана';
     pendingActions.set(String(context.from.id), { type: 'ends_at', channelId: context.match[1] });
-    return context.editMessageText(`⏰ Дата итогов\n\nТекущая дата: ${current}\n\nОтправьте дату и время в формате:\nYYYY-MM-DD HH:mm\n\nПример: 2026-10-01 20:00\n\nЧтобы отключить автоматические итоги, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+    return context.editMessageText(`⏰ Дата итогов по Москве\n\nТекущая дата: ${current}\n\nОтправьте московскую дату и время:\nYYYY-MM-DD HH:mm\n\nПример: 2026-10-01 20:00\n\nЧтобы отключить автоматические итоги, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
   });
 
   bot.callbackQuery(/^color_help:(.+)$/, async (context) => {
@@ -445,7 +461,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
       const channelSettings = await store.getChannel(action.channelId);
         pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
-        return context.reply('Теперь отправьте дату итогов:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.');
+        return context.reply('Теперь отправьте дату итогов по Москве:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.');
     } catch (error) {
       return context.reply(`Не удалось опубликовать медиа-конкурс: ${error.message}`);
     }
@@ -476,7 +492,13 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       if (!giveaway) return context.reply('Конкурс не найден.');
       try {
         if (action.type === 'contest_name') giveaway.title = context.msg.text.trim();
-        if (action.type === 'contest_description') giveaway.description = context.msg.text.trim();
+        if (action.type === 'contest_description') {
+          giveaway.description = context.msg.text.trim();
+          const titleLength = utf16Length(giveaway.title);
+          const titleEntities = (giveaway.entities ?? []).filter((entity) => entity.offset >= 3 && entity.offset < 3 + titleLength);
+          giveaway.entities = [...titleEntities, ...remapDescriptionEntities(giveaway.description, context.msg.entities, giveaway.title)];
+          giveaway.sourceText = `${giveaway.title} | ${giveaway.winnersCount} | ${giveaway.description}`;
+        }
         if (action.type === 'contest_ends') {
           giveaway.endsAt = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
           if (context.msg.text.trim().toLowerCase() !== 'нет' && !giveaway.endsAt) return context.reply('Неверная дата. Формат: 2026-10-01 20:00');
@@ -519,7 +541,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       if (context.msg.text.trim().toLowerCase() !== 'нет' && !value) return context.reply('Неверная дата. Используйте формат: 2026-10-01 20:00');
       const channel = await store.getChannel(action.channelId) ?? { id: action.channelId, title: action.channelId };
       await store.saveChannel({ ...channel, defaultEndsAt: value });
-      return context.reply(value ? `Дата итогов сохранена: ${new Date(value).toLocaleString('ru-RU')}` : 'Автоматическая дата итогов отключена.');
+      return context.reply(value ? `Дата итогов по Москве сохранена: ${formatMoscowDate(value)}` : 'Автоматическая дата итогов отключена.');
     }
   });
 
