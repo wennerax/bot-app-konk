@@ -9,9 +9,9 @@ Node.js-бот на grammY и Fastify с Mini App по адресу `https://bre
 3. Скопируйте `.env.example` в `.env` и укажите `BOT_TOKEN`.
 4. Создайте Mini App в BotFather, укажите его короткое имя в `MINI_APP_NAME` и URL `https://bred.bothost.tech`.
 5. Добавьте бота администратором канала. Для проверки подписок ему нужен доступ к участникам канала.
-6. Запустите `npm.cmd start`.
+6. В панели хоста укажите главный файл `server.js` и запустите `npm.cmd start`.
 
-На хосте `PUBLIC_URL` должен быть полным публичным HTTPS-адресом, например `https://bred.bothost.tech`; короткий адрес `https://bred` не подходит, потому что Telegram не сможет найти такой DNS-host. При локальном или некорректном URL бот не падает, а использует long polling, но Mini App будет доступен только по правильному адресу хоста.
+На хосте задайте `PUBLIC_URL=https://bred.bothost.tech`; если переменная не задана, приложение использует этот адрес по умолчанию. Короткий адрес `https://bred` не подходит, потому что Telegram не сможет найти такой DNS-host. Для локального запуска можно задать `PUBLIC_URL=http://localhost:3000`, тогда бот использует long polling.
 
 `MANAGED_CHANNELS` принимает JSON, например:
 
