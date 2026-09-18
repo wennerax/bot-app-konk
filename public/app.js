@@ -33,7 +33,6 @@ function render(giveaways) {
     fragment.querySelector('h2').textContent = giveaway.title;
     fragment.querySelector('.meta').textContent = `${giveaway.participants.length} участников · ${giveaway.winnersCount} победител${giveaway.winnersCount === 1 ? 'ь' : 'я'}`;
     fragment.querySelector('.description').textContent = giveaway.description || 'Условия участия открываются в Telegram.';
-    fragment.querySelector('.join').style.backgroundColor = giveaway.miniAppButtonColor || 'var(--accent)';
     if (giveaway.media?.type === 'photo') {
       const image = document.createElement('img');
       image.src = `/api/media/${encodeURIComponent(giveaway.media.fileId)}`;
@@ -48,7 +47,7 @@ function render(giveaways) {
 
 function openParticipation(giveaway) {
   selectedGiveaway = giveaway;
-  const accent = giveaway.miniAppButtonColor || '#e6ff54';
+  const accent = '#ff1744';
   document.documentElement.style.setProperty('--accent', accent);
   telegram?.MainButton?.setParams({ text: 'УЧАСТВОВАТЬ', color: accent, text_color: '#111111' });
   list.hidden = true;
