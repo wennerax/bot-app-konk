@@ -54,14 +54,38 @@ function parseDateInput(value) {
 async function resolveRequiredChannels(bot, references) {
   const botUser = await bot.api.getMe();
   const requiredChannels = [];
-  for (const reference of references) {
-    if (/^https?:\/\//i.test(reference)) throw new Error('Укажите @username или числовой ID -100..., а не ссылку https://t.me/...');
+  for (const rawReference of references) {
+    const reference = normalizeChannelReference(rawReference);
+    if (!reference) throw new Error('Не удалось определить канал по этой ссылке. Для приватного канала укажите ID -100...');
     const chat = await bot.api.getChat(reference);
-    const botMember = await bot.api.getChatMember(chat.id, botUser.id);
+    if (!['channel', 'supergroup'].includes(chat.type)) throw new Error(`«${chat.title ?? reference}» не является каналом или супергруппой`);
+    let botMember;
+    try {
+      botMember = await bot.api.getChatMember(chat.id, botUser.id);
+    } catch (error) {
+      if (error.description?.includes('member list is inaccessible')) {
+        throw new Error(`Telegram не даёт проверить участников «${chat.title ?? reference}». Добавьте бота администратором именно этого канала и включите «Доступ к сообщениям канала».`);
+      }
+      throw new Error(`Не удалось проверить права бота в «${chat.title ?? reference}»: ${error.description ?? error.message}`);
+    }
     if (!['creator', 'administrator'].includes(botMember.status)) throw new Error(`Бот не является администратором канала «${chat.title ?? reference}»`);
     requiredChannels.push({ id: chat.id, title: chat.title ?? reference, url: chat.username ? `https://t.me/${chat.username}` : null });
   }
   return requiredChannels;
+}
+
+function normalizeChannelReference(value) {
+  const reference = String(value ?? '').trim();
+  if (!/^https?:\/\//i.test(reference)) return reference;
+  try {
+    const url = new URL(reference);
+    if (!['t.me', 'telegram.me', 'www.t.me', 'www.telegram.me'].includes(url.hostname.toLowerCase())) return null;
+    const segment = url.pathname.split('/').filter(Boolean)[0];
+    if (!segment || segment.startsWith('+') || segment.toLowerCase() === 'joinchat') return null;
+    return `@${segment.replace(/^@/, '')}`;
+  } catch {
+    return null;
+  }
 }
 
 export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
@@ -332,7 +356,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       ? channel.requiredChannels.map((item) => `• ${item.title} (${item.id})`).join('\n')
       : 'Не настроены';
     pendingActions.set(String(context.from.id), { type: 'conditions', channelId: context.match[1] });
-    return context.editMessageText(`📋 Условия подписки\n\nТекущие обязательные каналы:\n${conditions}\n\nТеперь отправьте партнёров через запятую:\n@partner1, @partner2\n\nСам канал конкурса добавляется автоматически. Чтобы убрать партнёров, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+    return context.editMessageText(`📋 Условия подписки\n\nТекущие обязательные каналы:\n${conditions}\n\nТеперь отправьте партнёров через запятую:\n@partner1, https://t.me/partner2\n\nПубличные ссылки поддерживаются автоматически. Для приватного канала используйте ID -100...\n\nСам канал конкурса добавляется автоматически. Чтобы убрать партнёров, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
   });
 
   bot.callbackQuery(/^ends_at_help:(.+)$/, async (context) => {
