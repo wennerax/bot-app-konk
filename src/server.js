@@ -4,6 +4,7 @@ import { createBot } from './bot.js';
 import { config } from './config.js';
 import { createGiveaway } from './domain/giveaway.js';
 import { MemoryStore } from './store/memory-store.js';
+import { createPostgresStore } from './store/postgres-store.js';
 import { addParticipant } from './domain/giveaway.js';
 import { checkRequiredChannels } from './services/subscription.js';
 import { validateWebAppInitData } from './services/telegram-auth.js';
@@ -83,7 +84,10 @@ export function buildServer({ bot, store, botToken } = {}) {
 const isDirectRun = path.basename(process.argv[1] ?? '') === 'server.js';
 
 if (isDirectRun) {
-  const store = new MemoryStore();
+  const store = config.databaseUrl
+    ? await createPostgresStore(config.databaseUrl)
+    : new MemoryStore();
+  if (!config.databaseUrl) console.warn('DATABASE_URL не задан: используется временное хранилище MemoryStore. Данные пропадут после перезапуска.');
   const bot = config.botToken ? createBot({ token: config.botToken, store, publicUrl: config.publicUrl, miniAppName: process.env.MINI_APP_NAME, managedChannels: config.managedChannels }) : null;
   const app = buildServer({ bot, store, botToken: config.botToken });
   if (bot) await bot.init();

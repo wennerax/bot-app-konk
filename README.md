@@ -32,4 +32,4 @@ Node.js-бот на grammY и Fastify с Mini App по адресу `https://bre
 
 ## Проверки
 
-`npm.cmd test` запускает unit-тесты доменной логики. В текущем MVP данные хранятся в памяти; перед production подключите PostgreSQL через реализацию интерфейса `MemoryStore` и добавьте проверку Telegram WebApp init data для административных API.
+`npm.cmd test` запускает unit-тесты доменной логики. Для production добавьте PostgreSQL connection string в `DATABASE_URL`. При старте таблицы создаются автоматически: `channels` хранит каналы и настройки, `giveaways` конкурсы, `participants` участников. Без `DATABASE_URL` используется временное хранилище, которое очищается после перезапуска.

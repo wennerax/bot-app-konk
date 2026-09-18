@@ -15,7 +15,6 @@ export function createGiveaway(input, now = new Date()) {
     id: input.id ?? crypto.randomUUID(),
     title,
     description: String(input.description ?? '').trim(),
-    sourceText: String(input.sourceText ?? '').trim(),
     channelId,
     requiredChannels: Array.isArray(input.requiredChannels) ? input.requiredChannels : [],
     miniAppButtonColor: input.miniAppButtonColor ?? '#e6ff54',
