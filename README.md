@@ -32,4 +32,4 @@ Node.js-бот на grammY и Fastify с Mini App по адресу `https://bre
 
 ## Проверки
 
-`npm.cmd test` запускает unit-тесты доменной логики. Для production добавьте PostgreSQL connection string в `DATABASE_URL`. При старте таблицы создаются автоматически: `channels` хранит каналы и настройки, `giveaways` конкурсы, `participants` участников. Без `DATABASE_URL` используется временное хранилище, которое очищается после перезапуска.
+`npm.cmd test` запускает unit-тесты доменной логики. Данные production хранятся в локальном файле `data/bot-data.json`: `channels` хранит каналы и настройки, `giveaways` конкурсы и участников. Путь можно изменить переменной `DATA_FILE`. Для сохранения данных между redeploy убедитесь, что хост сохраняет каталог проекта или подключите persistent volume.

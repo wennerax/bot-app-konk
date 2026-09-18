@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import path from 'node:path';
 
 function parseChannels(value) {
   if (!value) return [];
@@ -15,5 +16,5 @@ export const config = {
   port: Number(process.env.PORT ?? 3000),
   webhookSecret: process.env.WEBHOOK_SECRET ?? 'change-me',
   managedChannels: parseChannels(process.env.MANAGED_CHANNELS),
-  databaseUrl: process.env.DATABASE_URL ?? ''
+  dataFile: process.env.DATA_FILE ?? path.join(process.cwd(), 'data', 'bot-data.json')
 };
