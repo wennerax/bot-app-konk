@@ -2,58 +2,17 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from './domain/giveaway.js';
 import { checkRequiredChannels, findAdminChannels } from './services/subscription.js';
 
-function remapPublishedEntities(text, title, description, entities) {
-  const descriptionStart = 3 + utf16Length(title) + 2;
-  const outputDescriptionStart = utf16Length(`🎁 ${title}\n\n`);
-  return entities.map((entity) => {
-    if (entity.offset < descriptionStart) return entity;
-    return { ...entity, offset: outputDescriptionStart + entity.offset - descriptionStart };
-  });
-}
-
-function normalizeCustomEntities(entities = []) {
-  return entities
-    .filter((entity) => entity.type !== 'custom_emoji' || entity.custom_emoji_id)
-    .map((entity) => entity.type === 'custom_emoji'
-      ? { ...entity, custom_emoji_id: String(entity.custom_emoji_id) }
-      : entity);
-}
-
-function buildPublishText(title, description, entities) {
-  const prefix = `🎁 ${title}\n\n`;
-  const sourceDescriptionStart = 3 + utf16Length(title) + 2;
-  const customEntities = entities
-    .filter((entity) => entity.type === 'custom_emoji' && entity.offset >= sourceDescriptionStart)
-    .sort((left, right) => left.offset - right.offset);
-  let output = description;
-  const publishedEntities = [];
-  let removedUnits = 0;
-  for (const entity of customEntities) {
-    const relativeOffset = entity.offset - sourceDescriptionStart - removedUnits;
-    if (relativeOffset < 0 || relativeOffset >= utf16Length(output)) continue;
-    output = `${output.slice(0, relativeOffset)}🙂${output.slice(relativeOffset + entity.length)}`;
-    publishedEntities.push({ ...entity, offset: utf16Length(prefix) + relativeOffset, length: 2 });
-    removedUnits += entity.length - 2;
-  }
-  return { text: prefix + output, entities: publishedEntities };
-}
-
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
-  const entities = normalizeCustomEntities(giveaway.entities);
-  const published = giveaway.description
-    ? buildPublishText(giveaway.title, giveaway.description, entities)
-    : { text: `🎁 ${giveaway.title}\n\nНажми кнопку, чтобы проверить условия и участвовать.`, entities: [] };
-  const text = published.text;
-  const publishedEntities = published.entities;
+  const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
     url: miniAppUrl,
     style: giveaway.buttonStyle ?? 'primary'
   });
-  const options = { reply_markup: keyboard, ...(publishedEntities.length ? { entities: publishedEntities } : {}) };
-  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
-  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
-  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: text, ...(publishedEntities.length ? { caption_entities: publishedEntities } : {}), reply_markup: keyboard });
+  const options = { reply_markup: keyboard };
+  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, reply_markup: keyboard });
+  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, reply_markup: keyboard });
+  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: text, reply_markup: keyboard });
   return bot.api.sendMessage(channelId, text, options);
 }
 
