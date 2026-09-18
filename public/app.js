@@ -7,8 +7,21 @@ const userLabel = document.querySelector('#user-label');
 const participation = document.querySelector('#participation');
 const status = document.querySelector('#check-status');
 const dice = document.querySelector('.dice');
-const selectedId = new URLSearchParams(location.search).get('giveaway')
-  ?? telegram?.initDataUnsafe?.start_param?.replace(/^g_/, '');
+
+function getStartParam() {
+  const urlParams = new URLSearchParams(location.search);
+  const hashParams = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const rawInitData = new URLSearchParams(telegram?.initData ?? '');
+  return urlParams.get('giveaway')
+    ?? urlParams.get('startapp')
+    ?? hashParams.get('startapp')
+    ?? hashParams.get('tgWebAppStartParam')
+    ?? telegram?.initDataUnsafe?.start_param
+    ?? rawInitData.get('start_param')
+    ?? rawInitData.get('startapp');
+}
+
+const selectedId = getStartParam()?.replace(/^g_/, '') ?? null;
 let selectedGiveaway = null;
 
 function render(giveaways) {
@@ -94,4 +107,6 @@ async function load() {
 }
 
 document.querySelector('#refresh').addEventListener('click', load);
-load().catch(() => { list.innerHTML = '<p class="empty">Не удалось загрузить конкурсы.</p>'; });
+load().catch((error) => {
+  list.innerHTML = `<p class="empty">Не удалось загрузить конкурсы.<br><small>${error.message || 'Проверьте подключение к серверу.'}</small></p>`;
+});
