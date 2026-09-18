@@ -1,0 +1,65 @@
+import Fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
+import { createBot } from './bot.js';
+import { config } from './config.js';
+import { createGiveaway } from './domain/giveaway.js';
+import { MemoryStore } from './store/memory-store.js';
+import { addParticipant } from './domain/giveaway.js';
+import { checkRequiredChannels } from './services/subscription.js';
+import { validateWebAppInitData } from './services/telegram-auth.js';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+export function buildServer({ bot, store, botToken } = {}) {
+  const app = Fastify({ logger: true });
+  const giveawayStore = store ?? new MemoryStore();
+  app.register(fastifyStatic, { root: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public') });
+  app.get('/health', async () => ({ ok: true }));
+  app.get('/api/giveaways', async () => giveawayStore.listGiveaways());
+  app.get('/api/giveaways/:id', async (request, reply) => {
+    const giveaway = await giveawayStore.getGiveaway(request.params.id);
+    if (!giveaway) return reply.code(404).send({ error: 'Конкурс не найден' });
+    return giveaway;
+  });
+  app.get('/api/media/:fileId', async (request, reply) => {
+    if (!bot || !botToken) return reply.code(503).send({ error: 'Telegram bot не настроен' });
+    const file = await bot.api.getFile(request.params.fileId);
+    const mediaResponse = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`);
+    if (!mediaResponse.ok) return reply.code(404).send({ error: 'Медиа не найдено' });
+    reply.type(mediaResponse.headers.get('content-type') ?? 'application/octet-stream');
+    return Buffer.from(await mediaResponse.arrayBuffer());
+  });
+  app.post('/api/giveaways', async (request, reply) => {
+    try {
+      const giveaway = createGiveaway(request.body ?? {});
+      await giveawayStore.saveGiveaway(giveaway);
+      return reply.code(201).send(giveaway);
+    } catch (error) {
+      return reply.code(400).send({ error: error.message });
+    }
+  });
+  app.post('/api/giveaways/:id/participate', async (request, reply) => {
+    if (!bot || !botToken) return reply.code(503).send({ error: 'Telegram bot не настроен' });
+    const user = validateWebAppInitData(request.headers['x-telegram-init-data'], botToken);
+    if (!user) return reply.code(401).send({ error: 'Недействительные данные Telegram' });
+    const giveaway = await giveawayStore.getGiveaway(request.params.id);
+    if (!giveaway) return reply.code(404).send({ error: 'Конкурс не найден' });
+    const check = await checkRequiredChannels(bot, user.id, giveaway.requiredChannels);
+    if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels });
+    const result = addParticipant(giveaway, user.id);
+    await giveawayStore.saveGiveaway(giveaway);
+    return { ...result, giveawayId: giveaway.id };
+  });
+  if (bot) app.post('/telegram/webhook', async (request) => { await bot.handleUpdate(request.body); return { ok: true }; });
+  return app;
+}
+
+const isDirectRun = path.basename(process.argv[1] ?? '') === 'server.js';
+
+if (isDirectRun) {
+  const store = new MemoryStore();
+  const bot = config.botToken ? createBot({ token: config.botToken, store, publicUrl: config.publicUrl, miniAppName: process.env.MINI_APP_NAME, managedChannels: config.managedChannels }) : null;
+  const app = buildServer({ bot, store, botToken: config.botToken });
+  if (bot) await bot.api.setWebhook(`${config.publicUrl}/telegram/webhook`, { secret_token: config.webhookSecret });
+  await app.listen({ port: config.port, host: '0.0.0.0' });
+}
