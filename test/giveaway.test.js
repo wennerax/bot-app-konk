@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addParticipant, createGiveaway, getParticipationLink, pickWinners } from '../src/domain/giveaway.js';
+import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from '../src/domain/giveaway.js';
+
+test('puts the contest channel first and removes legacy default partners', () => {
+  const channels = ensurePrimaryChannel('-1001', [
+    { id: '-1002', title: 'Тест' },
+    { id: '-1003', title: 'Бредишь' },
+    { id: '-1004', title: 'Партнёр' },
+    { id: '-1001', title: 'Канал конкурса' }
+  ]);
+  assert.deepEqual(channels.map((channel) => channel.id), ['-1001', '-1004']);
+});
 
 test('creates a giveaway with defaults', () => {
   const giveaway = createGiveaway({ title: 'Билеты', channelId: '-1001', winnersCount: 2 });

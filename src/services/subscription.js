@@ -1,14 +1,17 @@
 export async function checkRequiredChannels(bot, userId, channels) {
-  const results = await Promise.all(channels.map(async (channel) => {
+  const results = [];
+  for (const channel of channels) {
     try {
       const member = await bot.api.getChatMember(channel.id, userId);
       const isMember = ['creator', 'administrator', 'member'].includes(member.status)
         || (member.status === 'restricted' && member.is_member);
-      return { ...channel, isMember, status: member.status };
+      results.push({ ...channel, isMember, status: member.status });
+      if (!isMember) break;
     } catch (error) {
-      return { ...channel, isMember: false, status: 'unknown', error: error.description ?? 'Бот не может проверить этот канал' };
+      results.push({ ...channel, isMember: false, status: 'unknown', error: error.description ?? 'Бот не может проверить этот канал' });
+      break;
     }
-  }));
+  }
 
   return {
     passed: results.every((channel) => channel.isMember),

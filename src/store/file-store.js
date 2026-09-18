@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { ensurePrimaryChannel } from '../domain/giveaway.js';
 
 const emptyData = () => ({ channels: {}, giveaways: {} });
 
@@ -15,6 +16,18 @@ export class FileStore {
     try {
       const content = await fs.readFile(this.filePath, 'utf8');
       this.data = { ...emptyData(), ...JSON.parse(content) };
+      let migrated = false;
+      for (const channel of Object.values(this.data.channels)) {
+        const requiredChannels = ensurePrimaryChannel(channel.id, channel.requiredChannels ?? []);
+        migrated ||= JSON.stringify(requiredChannels) !== JSON.stringify(channel.requiredChannels ?? []);
+        channel.requiredChannels = requiredChannels;
+      }
+      for (const giveaway of Object.values(this.data.giveaways)) {
+        const requiredChannels = ensurePrimaryChannel(giveaway.channelId, giveaway.requiredChannels ?? []);
+        migrated ||= JSON.stringify(requiredChannels) !== JSON.stringify(giveaway.requiredChannels ?? []);
+        giveaway.requiredChannels = requiredChannels;
+      }
+      if (migrated) await this.persist();
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
       await this.persist();

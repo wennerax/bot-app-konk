@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { createBot, startGiveawayScheduler } from './bot.js';
 import { config } from './config.js';
-import { createGiveaway } from './domain/giveaway.js';
+import { createGiveaway, ensurePrimaryChannel } from './domain/giveaway.js';
 import { MemoryStore } from './store/memory-store.js';
 import { FileStore } from './store/file-store.js';
 import { addParticipant } from './domain/giveaway.js';
@@ -64,6 +64,7 @@ export function buildServer({ bot, store, botToken } = {}) {
     if (!user) return reply.code(401).send({ error: 'Недействительные данные Telegram' });
     const giveaway = await giveawayStore.getGiveaway(request.params.id);
     if (!giveaway) return reply.code(404).send({ error: 'Конкурс не найден' });
+    giveaway.requiredChannels = ensurePrimaryChannel(giveaway.channelId, giveaway.requiredChannels);
     const check = await checkRequiredChannels(bot, user.id, giveaway.requiredChannels);
     if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels, missingChannels: check.channels.filter((channel) => !channel.isMember) });
     const result = addParticipant(giveaway, user.id);

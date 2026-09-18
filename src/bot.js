@@ -1,5 +1,5 @@
 import { Bot, InlineKeyboard } from 'grammy';
-import { addParticipant, createGiveaway, getParticipationLink, pickWinners } from './domain/giveaway.js';
+import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from './domain/giveaway.js';
 import { checkRequiredChannels, findAdminChannels } from './services/subscription.js';
 
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
@@ -342,7 +342,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     const giveaway = await store.getGiveaway(context.match[1]);
     if (!giveaway) return context.reply('Конкурс не найден.');
     const partnerIndex = Number(context.match[2]);
-    if (!Number.isInteger(partnerIndex) || partnerIndex < 0 || partnerIndex >= giveaway.requiredChannels.length) return context.reply('Партнёр уже удалён.');
+    if (!Number.isInteger(partnerIndex) || partnerIndex <= 0 || partnerIndex >= giveaway.requiredChannels.length) return context.reply('Канал конкурса обязателен и не может быть удалён.');
     giveaway.requiredChannels.splice(partnerIndex, 1);
     await store.saveGiveaway(giveaway);
     return context.editMessageText('📋 Условия конкурса\n\nВыберите партнёра для удаления или добавьте нового:', { reply_markup: contestConditionsKeyboard(giveaway) });
@@ -507,7 +507,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         if (action.type === 'contest_conditions') {
           const references = context.msg.text.trim().toLowerCase() === 'нет' ? [] : context.msg.text.split(',').map((item) => item.trim()).filter(Boolean);
           const requiredChannels = await resolveRequiredChannels(bot, [giveaway.channelId, ...references]);
-          giveaway.requiredChannels = requiredChannels;
+          giveaway.requiredChannels = ensurePrimaryChannel(giveaway.channelId, requiredChannels);
         }
         await store.saveGiveaway(giveaway);
         return context.reply(`Настройка сохранена: ${giveaway.title}`, { reply_markup: contestSettingsKeyboard(giveaway) });
@@ -518,7 +518,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     if (action.type === 'conditions') {
       const references = context.msg.text.toLowerCase() === 'нет' ? [] : context.msg.text.split(',').map((item) => item.trim()).filter(Boolean);
       try {
-        const requiredChannels = await resolveRequiredChannels(bot, [action.channelId, ...references]);
+        const requiredChannels = ensurePrimaryChannel(action.channelId, await resolveRequiredChannels(bot, [action.channelId, ...references]));
         const channel = await store.getChannel(action.channelId) ?? { id: action.channelId, title: action.channelId };
         await store.saveChannel({ ...channel, requiredChannels });
         return context.reply(`Условия сохранены. Обязательных каналов: ${requiredChannels.length}.`);
@@ -552,7 +552,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     const moderator = await bot.api.getChatMember(channelId, context.from.id);
     if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
     const references = [channelId, ...partnersText.split(',').map((item) => item.trim()).filter(Boolean)];
-    const requiredChannels = await resolveRequiredChannels(bot, references);
+    const requiredChannels = ensurePrimaryChannel(channelId, await resolveRequiredChannels(bot, references));
     const channel = await store.getChannel(channelId) ?? { id: channelId, title: channelId };
     await store.saveChannel({ ...channel, requiredChannels });
     return context.reply(`Условия сохранены. Обязательных каналов: ${requiredChannels.length}.`);
@@ -636,7 +636,8 @@ function contestSettingsKeyboard(giveaway) {
 function contestConditionsKeyboard(giveaway) {
   const keyboard = new InlineKeyboard();
   for (const [index, channel] of (giveaway.requiredChannels ?? []).entries()) {
-    keyboard.text(`❌ ${channel.title}`, `contest_partner_remove:${giveaway.id}:${index}`).row();
+    if (index === 0) keyboard.text(`🔒 ${channel.title} (канал конкурса)`, `contest_conditions:${giveaway.id}`).row();
+    else keyboard.text(`❌ ${channel.title}`, `contest_partner_remove:${giveaway.id}:${index}`).row();
   }
   keyboard.text('➕ Добавить партнёров', `contest_conditions_edit:${giveaway.id}`).row();
   return keyboard.text('⬅️ Назад', `contest_settings:${giveaway.id}`);

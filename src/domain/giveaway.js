@@ -1,5 +1,23 @@
 import crypto, { randomInt } from 'node:crypto';
 
+export function ensurePrimaryChannel(channelId, channels = []) {
+  const primaryId = String(channelId ?? '').trim();
+  const uniqueChannels = [];
+  const seen = new Set([primaryId]);
+  const primary = channels.find((channel) => String(channel?.id) === primaryId);
+
+  uniqueChannels.push(primary ?? { id: primaryId, title: primaryId, url: null });
+  for (const channel of channels) {
+    const id = String(channel?.id ?? '').trim();
+    const title = String(channel?.title ?? '').trim().toLowerCase();
+    if (id !== primaryId && (title === 'тест' || title === 'бредишь')) continue;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    uniqueChannels.push(channel);
+  }
+  return uniqueChannels;
+}
+
 export function createGiveaway(input, now = new Date()) {
   const title = String(input.title ?? '').trim();
   const channelId = String(input.channelId ?? '').trim();
@@ -16,7 +34,7 @@ export function createGiveaway(input, now = new Date()) {
     title,
     description: String(input.description ?? '').trim(),
     channelId,
-    requiredChannels: Array.isArray(input.requiredChannels) ? input.requiredChannels : [],
+    requiredChannels: ensurePrimaryChannel(channelId, Array.isArray(input.requiredChannels) ? input.requiredChannels : []),
     miniAppButtonColor: input.miniAppButtonColor ?? '#e6ff54',
     buttonStyle: ['danger', 'success', 'primary', 'default'].includes(input.buttonStyle) ? input.buttonStyle : 'primary',
     media: input.media ?? null,
