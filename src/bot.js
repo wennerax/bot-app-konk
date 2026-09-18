@@ -4,7 +4,11 @@ import { checkRequiredChannels, findAdminChannels } from './services/subscriptio
 
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
-  const keyboard = new InlineKeyboard().url('Участвовать', miniAppUrl);
+  const keyboard = new InlineKeyboard().add({
+    text: 'Участвовать',
+    url: miniAppUrl,
+    style: giveaway.buttonStyle ?? 'primary'
+  });
   const options = { reply_markup: keyboard, entities: giveaway.entities };
   if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, caption_entities: giveaway.entities, reply_markup: keyboard });
   if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, caption_entities: giveaway.entities, reply_markup: keyboard });
@@ -55,7 +59,7 @@ function channelSettingsKeyboard(channel) {
   const keyboard = new InlineKeyboard()
     .text('🎁 Создать конкурс', `giveaway_help:${channel.id}`).row()
     .text('📋 Условия подписки', `conditions_help:${channel.id}`).row()
-    .text('🎨 Цвет Mini App', `color_help:${channel.id}`).row()
+    .text('🎨 Цвет интерфейса', `color_help:${channel.id}`).row()
     .text('🖼 Медиа поста', `media_help:${channel.id}`).row();
   if (channel.url) keyboard.url('🔗 Открыть канал', channel.url).row();
   return keyboard.text('⬅️ К списку каналов', 'channels_back').row().text('❌ Закрыть', 'channels_close');
@@ -63,12 +67,10 @@ function channelSettingsKeyboard(channel) {
 
 function colorPaletteKeyboard(channelId) {
   return new InlineKeyboard()
-    .text('🔴 Красный', `color_set:${channelId}:#ef4444`)
-    .text('🟠 Коралловый', `color_set:${channelId}:#f97360`).row()
-    .text('🟡 Жёлтый', `color_set:${channelId}:#e6ff54`)
-    .text('🟢 Зелёный', `color_set:${channelId}:#35c98b`).row()
-    .text('🔵 Синий', `color_set:${channelId}:#3b82f6`)
-    .text('⚫ Графит', `color_set:${channelId}:#222222`).row()
+    .text('🔴 Красный', `button_style_set:${channelId}:danger`)
+    .text('🟢 Зелёный', `button_style_set:${channelId}:success`).row()
+    .text('🔵 Синий', `button_style_set:${channelId}:primary`)
+    .text('⚪ Обычный', `button_style_set:${channelId}:default`).row()
     .text('⬅️ Назад', `channel_settings:${channelId}`);
 }
 
@@ -189,18 +191,18 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
   bot.callbackQuery(/^color_help:(.+)$/, async (context) => {
     await context.answerCallbackQuery();
     const channel = await store.getChannel(context.match[1]);
-    return context.editMessageText(`🎨 Цвет кнопки Mini App\n\nТекущий цвет: ${channel?.miniAppButtonColor ?? '#e6ff54'}\n\nВыберите цвет ниже.\n\nЦвет кнопки непосредственно под постом Telegram изменить нельзя: это ограничение Bot API.`, { reply_markup: colorPaletteKeyboard(context.match[1]) });
+    return context.editMessageText(`🎨 Цвет кнопки под постом\n\nТекущий стиль: ${channel?.buttonStyle ?? 'primary'}\n\nВыберите стиль Telegram для новых публикаций:`, { reply_markup: colorPaletteKeyboard(context.match[1]) });
   });
 
-  bot.callbackQuery(/^color_set:(.+):(#(?:[0-9a-f]{6}))$/, async (context) => {
+  bot.callbackQuery(/^button_style_set:(.+):(danger|success|primary|default)$/, async (context) => {
     await context.answerCallbackQuery('Цвет сохранён');
     const channelId = context.match[1];
-    const color = context.match[2];
+    const buttonStyle = context.match[2];
     const moderator = await bot.api.getChatMember(channelId, context.from.id);
     if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
     const channel = await store.getChannel(channelId) ?? { id: channelId, title: channelId };
-    await store.saveChannel({ ...channel, miniAppButtonColor: color });
-    return context.editMessageText(`🎨 Цвет Mini App сохранён: ${color}\n\nНовые конкурсы будут использовать этот цвет внутри Mini App.`, { reply_markup: channelSettingsKeyboard({ ...channel, miniAppButtonColor: color }) });
+    await store.saveChannel({ ...channel, buttonStyle });
+    return context.editMessageText(`🎨 Стиль кнопки сохранён: ${buttonStyle}\n\nОн будет применён к новым публикациям конкурса.`, { reply_markup: channelSettingsKeyboard({ ...channel, buttonStyle }) });
   });
 
   bot.callbackQuery(/^media_help:(.+)$/, async (context) => {
@@ -227,7 +229,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       const moderator = await bot.api.getChatMember(action.channelId, context.from.id);
       if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
       const channelSettings = await store.getChannel(action.channelId);
-      const giveaway = createGiveaway({ title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor });
+      const giveaway = createGiveaway({ title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle });
       await store.saveGiveaway(giveaway);
       const username = (await bot.api.getMe()).username;
       await publishGiveaway(bot, action.channelId, giveaway, getParticipationLink(username, giveaway.id));
@@ -251,7 +253,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         const moderator = await bot.api.getChatMember(action.channelId, context.from.id);
         if (!['creator', 'administrator'].includes(moderator.status)) return context.reply('Нужны права администратора канала.');
         const channelSettings = await store.getChannel(action.channelId);
-        const giveaway = createGiveaway({ title, description, entities, sourceText: context.msg.text, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor });
+        const giveaway = createGiveaway({ title, description, entities, sourceText: context.msg.text, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle });
         await store.saveGiveaway(giveaway);
         const username = (await bot.api.getMe()).username;
         await publishGiveaway(bot, action.channelId, giveaway, getParticipationLink(username, giveaway.id));
@@ -335,7 +337,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         entities: parsed.entities,
         sourceText,
         requiredChannels: channelSettings?.requiredChannels ?? [],
-        miniAppButtonColor: channelSettings?.miniAppButtonColor
+        miniAppButtonColor: channelSettings?.miniAppButtonColor,
+        buttonStyle: channelSettings?.buttonStyle
       });
       await store.saveGiveaway(giveaway);
       const username = (await bot.api.getMe()).username;

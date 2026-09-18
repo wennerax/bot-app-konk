@@ -56,7 +56,8 @@ export class FileStore {
       ...structuredClone(channel),
       id,
       requiredChannels: channel.requiredChannels ?? existing.requiredChannels ?? [],
-      miniAppButtonColor: channel.miniAppButtonColor ?? existing.miniAppButtonColor ?? '#e6ff54'
+      miniAppButtonColor: channel.miniAppButtonColor ?? existing.miniAppButtonColor ?? '#e6ff54',
+      buttonStyle: channel.buttonStyle ?? existing.buttonStyle ?? 'primary'
     };
     await this.persist();
     return structuredClone(this.data.channels[id]);
