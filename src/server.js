@@ -60,6 +60,14 @@ if (isDirectRun) {
   const store = new MemoryStore();
   const bot = config.botToken ? createBot({ token: config.botToken, store, publicUrl: config.publicUrl, miniAppName: process.env.MINI_APP_NAME, managedChannels: config.managedChannels }) : null;
   const app = buildServer({ bot, store, botToken: config.botToken });
-  if (bot) await bot.api.setWebhook(`${config.publicUrl}/telegram/webhook`, { secret_token: config.webhookSecret });
   await app.listen({ port: config.port, host: '0.0.0.0' });
+  if (bot) {
+    const publicUrl = new URL(config.publicUrl);
+    if (publicUrl.protocol === 'https:') {
+      await bot.api.setWebhook(`${config.publicUrl.replace(/\/$/, '')}/telegram/webhook`, { secret_token: config.webhookSecret });
+    } else {
+      await bot.api.deleteWebhook();
+      bot.start();
+    }
+  }
 }

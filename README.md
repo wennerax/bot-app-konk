@@ -11,6 +11,8 @@ Node.js-бот на grammY и Fastify с Mini App по адресу `https://bre
 5. Добавьте бота администратором канала. Для проверки подписок ему нужен доступ к участникам канала.
 6. Запустите `npm.cmd start`.
 
+На хосте `PUBLIC_URL` должен быть HTTPS, например `https://bred.bothost.tech`; тогда Telegram webhook зарегистрируется автоматически. При `http://localhost:3000` бот не регистрирует webhook и использует long polling.
+
 `MANAGED_CHANNELS` принимает JSON, например:
 
 ```json
