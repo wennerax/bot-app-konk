@@ -18,14 +18,14 @@ test('preserves custom emoji entity data in giveaway description', () => {
   const parsed = parseGiveawayInput(text, [{
     type: 'custom_emoji',
     offset: emojiOffset,
-    length: 1,
+    length: 2,
     custom_emoji_id: '987654321'
   }]);
 
   assert.deepEqual(parsed.entities, [{
     type: 'custom_emoji',
     offset: 3 + 'Приз'.length + 2,
-    length: 1,
+    length: 2,
     custom_emoji_id: '987654321'
   }]);
 });
@@ -66,4 +66,18 @@ test('sends custom emoji entities to Telegram when publishing', async () => {
     length: 1,
     custom_emoji_id: '123456789'
   });
+});
+
+test('keeps consecutive custom emoji with different UTF-16 lengths', () => {
+  const text = 'Билеты | 2 | Подпишись 💜 ✅';
+  const firstOffset = text.indexOf('💜');
+  const parsed = parseGiveawayInput(text, [
+    { type: 'custom_emoji', offset: firstOffset, length: 2, custom_emoji_id: 'purple' },
+    { type: 'custom_emoji', offset: firstOffset + 3, length: 1, custom_emoji_id: 'check' }
+  ]);
+
+  assert.deepEqual(parsed.entities.map(({ offset, length, custom_emoji_id }) => ({ offset, length, custom_emoji_id })), [
+    { offset: 21, length: 2, custom_emoji_id: 'purple' },
+    { offset: 24, length: 1, custom_emoji_id: 'check' }
+  ]);
 });

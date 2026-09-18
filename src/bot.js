@@ -26,6 +26,16 @@ function utf16Length(value) {
   return [...value].reduce((total, character) => total + (character.codePointAt(0) > 0xffff ? 2 : 1), 0);
 }
 
+function codePointLengthAt(value, offset) {
+  let cursor = 0;
+  for (const character of value) {
+    const length = character.codePointAt(0) > 0xffff ? 2 : 1;
+    if (cursor === offset) return length;
+    cursor += length;
+  }
+  return 0;
+}
+
 export { publishGiveaway };
 
 function getMessageEntities(message) {
@@ -46,12 +56,15 @@ export function parseGiveawayInput(text, entities = []) {
   const outputTitleStart = 3;
   const outputDescriptionStart = outputTitleStart + utf16Length(title) + 2;
   const mappedEntities = entities.flatMap((entity) => {
-    const end = entity.offset + entity.length;
+    const entityLength = entity.type === 'custom_emoji'
+      ? codePointLengthAt(text, entity.offset)
+      : entity.length;
+    const end = entity.offset + entityLength;
     if (title && entity.offset >= titleStart && end <= titleStart + title.length) {
-      return [{ ...entity, offset: outputTitleStart + entity.offset - titleStart }];
+      return [{ ...entity, length: entityLength, offset: outputTitleStart + entity.offset - titleStart }];
     }
     if (description && entity.offset >= descriptionStart && end <= descriptionStart + description.length) {
-      return [{ ...entity, offset: outputDescriptionStart + entity.offset - descriptionStart }];
+      return [{ ...entity, length: entityLength, offset: outputDescriptionStart + entity.offset - descriptionStart }];
     }
     return [];
   });
