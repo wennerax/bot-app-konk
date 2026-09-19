@@ -95,7 +95,7 @@ body::before {
 	opacity: .72;
 	background: radial-gradient(ellipse 24% 46% at var(--beam-x, 78%) var(--beam-y, 18%), rgba(255, 35, 67, .2), transparent 68%);
 	filter: blur(18px);
-	animation: ambient-beam 15s ease-in-out infinite alternate;
+	animation: ambient-beam 7s ease-in-out infinite alternate;
 	transform: rotate(-8deg);
 	transition: opacity .35s ease;
 }
@@ -106,10 +106,10 @@ body::after {
 	z-index: 20;
 	content: '';
 	pointer-events: none;
-	opacity: .12;
+	opacity: .2;
 	background: linear-gradient(112deg, transparent 22%, rgba(255, 103, 120, .18) 37%, rgba(255, 23, 68, .08) 43%, transparent 57%);
 	background-size: 220% 100%;
-	animation: ambient-glass 18s ease-in-out infinite;
+	animation: ambient-glass 9s ease-in-out infinite;
 	transform: translate3d(var(--glass-shift, 0px), 0, 0);
 	mix-blend-mode: screen;
 	transition: opacity .3s ease;
@@ -119,13 +119,14 @@ body.is-scrolling::before { opacity: .95; }
 body.is-scrolling::after { opacity: .28; }
 
 @keyframes ambient-beam {
-	0% { transform: translate3d(-3%, -2%, 0) rotate(-8deg) scale(1); }
-	100% { transform: translate3d(4%, 3%, 0) rotate(-3deg) scale(1.08); }
+	0% { opacity: .48; transform: translate3d(-9%, -5%, 0) rotate(-12deg) scale(.9); }
+	50% { opacity: .9; }
+	100% { opacity: .56; transform: translate3d(10%, 7%, 0) rotate(2deg) scale(1.16); }
 }
 
 @keyframes ambient-glass {
-	0%, 100% { background-position: 0% 50%; }
-	50% { background-position: 100% 50%; }
+	0%, 100% { background-position: -35% 50%; opacity: .12; }
+	50% { background-position: 135% 50%; opacity: .3; }
 }
 
 .shell { width: min(100% - 28px, 640px); padding: 28px 0 52px; }
