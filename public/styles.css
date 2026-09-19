@@ -131,7 +131,8 @@ body.is-scrolling::after { opacity: .28; }
 .number { color: #ff526a; text-shadow: 0 0 12px rgba(255, 23, 68, .5); }
 .giveaway h2 { color: var(--ink); }
 .meta { color: #a98d92; }
-.description { color: #d5bfc2; }
+.description { color: #d5bfc2; white-space: pre-wrap; }
+.description a { color: #ff6479; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .media { border: 1px solid var(--line); border-radius: 7px; }
 .join, .primary { border-radius: 5px; background: var(--neon); color: #18070a; box-shadow: 0 0 18px rgba(255, 23, 68, .3); }
 .join:hover, .primary:hover { background: #ff4d68; box-shadow: 0 0 24px rgba(255, 23, 68, .55); }

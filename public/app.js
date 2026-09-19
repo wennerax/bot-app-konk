@@ -10,6 +10,26 @@ const dice = document.querySelector('.dice');
 let scrollFrame = null;
 let scrollStopTimer = null;
 
+function renderDescription(container, value) {
+  const text = String(value || 'Условия участия открываются в Telegram.');
+  const pattern = /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g;
+  let cursor = 0;
+  let match;
+
+  container.replaceChildren();
+  while ((match = pattern.exec(text)) !== null) {
+    container.append(document.createTextNode(text.slice(cursor, match.index)));
+    const link = document.createElement('a');
+    link.href = match[2];
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = match[1];
+    container.append(link);
+    cursor = match.index + match[0].length;
+  }
+  container.append(document.createTextNode(text.slice(cursor)));
+}
+
 function updateLight() {
   const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
   const progress = Math.min(window.scrollY / maxScroll, 1);
@@ -53,7 +73,7 @@ function render(giveaways) {
     fragment.querySelector('.number').textContent = String(index + 1).padStart(2, '0');
     fragment.querySelector('h2').textContent = giveaway.title;
     fragment.querySelector('.meta').textContent = `${giveaway.participants.length} участников · ${giveaway.winnersCount} победител${giveaway.winnersCount === 1 ? 'ь' : 'я'}`;
-    fragment.querySelector('.description').textContent = giveaway.description || 'Условия участия открываются в Telegram.';
+    renderDescription(fragment.querySelector('.description'), giveaway.description);
     if (giveaway.media?.type === 'photo') {
       const image = document.createElement('img');
       image.src = `/api/media/${encodeURIComponent(giveaway.media.fileId)}`;
