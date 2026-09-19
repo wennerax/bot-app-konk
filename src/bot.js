@@ -56,6 +56,26 @@ function utf16IndexToStringIndex(value, offset) {
   return utf16Cursor >= offset ? cursor : value.length;
 }
 
+function convertMarkdownLinksToTelegramEntities(text = '') {
+  const entities = [];
+  const pattern = /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g;
+  let result = '';
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const [full, label, url] = match;
+    result += text.slice(lastIndex, match.index);
+    const labelStart = result.length;
+    result += label;
+    entities.push({ type: 'text_link', offset: labelStart, length: label.length, url });
+    lastIndex = match.index + full.length;
+  }
+
+  result += text.slice(lastIndex);
+  return { text: result, entities };
+}
+
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorChatId = null) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
   const keyboard = new InlineKeyboard().add({
@@ -65,13 +85,14 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorCh
   });
   const customEmojiEntities = normalizeCustomEmojiEntities(giveaway.entities);
   const safeText = customEmojiEntities.length ? replaceCustomEmojiWithFallback(text, customEmojiEntities) : text;
-  const mediaOptions = { caption: safeText, reply_markup: keyboard };
-  const options = { reply_markup: keyboard };
+  const { text: textWithLinks, entities: linkEntities } = convertMarkdownLinksToTelegramEntities(safeText);
+  const options = { reply_markup: keyboard, ...(linkEntities.length ? { entities: linkEntities } : {}) };
+  const mediaOptions = { caption: textWithLinks, reply_markup: keyboard, ...(linkEntities.length ? { caption_entities: linkEntities } : {}) };
 
   if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);
   if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, mediaOptions);
   if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, mediaOptions);
-  return bot.api.sendMessage(channelId, safeText, options);
+  return bot.api.sendMessage(channelId, textWithLinks, options);
 }
 
 function utf16Length(value) {
