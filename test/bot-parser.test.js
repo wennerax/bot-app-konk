@@ -49,7 +49,7 @@ test('keeps a custom emoji at the end of the description after trimming', () => 
   }]);
 });
 
-test('publishes original emoji as fallback in channel posts', async () => {
+test('publishes premium emoji entities in channel posts', async () => {
   let payload;
   const bot = { api: { sendMessage: async (...args) => { payload = args; } } };
   await publishGiveaway(bot, '-1001', {
@@ -61,7 +61,7 @@ test('publishes original emoji as fallback in channel posts', async () => {
 
   assert.equal(payload[0], '-1001');
   assert.equal(payload[1], '🎁 Билеты\n\nПремиум ✅');
-  assert.equal(payload[2].entities, undefined);
+  assert.deepEqual(payload[2].entities, [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: 123456789 }]);
 });
 
 test('keeps consecutive custom emoji with different UTF-16 lengths', () => {

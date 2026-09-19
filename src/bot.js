@@ -9,10 +9,12 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
     url: miniAppUrl,
     style: giveaway.buttonStyle ?? 'primary'
   });
-  const options = { reply_markup: keyboard };
-  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, { caption: text, reply_markup: keyboard });
-  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, { caption: text, reply_markup: keyboard });
-  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, { caption: text, reply_markup: keyboard });
+  const entityOptions = Array.isArray(giveaway.entities) && giveaway.entities.length ? { entities: giveaway.entities } : {};
+  const mediaOptions = { caption: text, reply_markup: keyboard, ...entityOptions, caption_entities: entityOptions.entities ?? undefined };
+  const options = { reply_markup: keyboard, ...entityOptions };
+  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);
+  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, mediaOptions);
+  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, mediaOptions);
   return bot.api.sendMessage(channelId, text, options);
 }
 
