@@ -106,10 +106,10 @@ body::after {
 	z-index: 20;
 	content: '';
 	pointer-events: none;
-	opacity: .2;
-	background: linear-gradient(112deg, transparent 22%, rgba(255, 103, 120, .18) 37%, rgba(255, 23, 68, .08) 43%, transparent 57%);
-	background-size: 220% 100%;
-	animation: ambient-glass 9s ease-in-out infinite;
+	opacity: .34;
+	background: linear-gradient(112deg, transparent 24%, rgba(255, 92, 116, 0) 36%, rgba(255, 52, 83, .5) 45%, rgba(255, 190, 198, .18) 49%, rgba(255, 23, 68, 0) 59%, transparent 72%);
+	background-size: 300% 100%;
+	animation: neon-sweep 5s linear infinite;
 	transform: translate3d(var(--glass-shift, 0px), 0, 0);
 	mix-blend-mode: screen;
 	transition: opacity .3s ease;
@@ -127,6 +127,12 @@ body.is-scrolling::after { opacity: .28; }
 @keyframes ambient-glass {
 	0%, 100% { background-position: -35% 50%; opacity: .12; }
 	50% { background-position: 135% 50%; opacity: .3; }
+}
+
+@keyframes neon-sweep {
+	0% { background-position: 125% 0; opacity: .05; }
+	18% { opacity: .38; }
+	42%, 100% { background-position: -125% 0; opacity: .05; }
 }
 
 .shell { width: min(100% - 28px, 640px); padding: 28px 0 52px; }
