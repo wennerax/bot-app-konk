@@ -13,6 +13,49 @@ function normalizeCustomEmojiEntities(entities = []) {
     }));
 }
 
+function fallbackEmojiForEntity(entity, index = 0) {
+  const palette = ['✨', '🔥', '🎉', '✅', '💎', '🎁', '⭐', '🚀', '🎯', '🏆'];
+  const raw = String(entity?.custom_emoji_id ?? '');
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) hash = (hash * 31 + raw.charCodeAt(i)) >>> 0;
+  return palette[(hash + index) % palette.length];
+}
+
+function replaceCustomEmojiWithFallback(text = '', entities = []) {
+  if (!text || !entities.length) return text;
+  const characters = [...text];
+  const parts = [];
+  let cursor = 0;
+
+  for (const entity of entities) {
+    if (!entity || entity.type !== 'custom_emoji' || !entity.custom_emoji_id) continue;
+    const start = Number(entity.offset) || 0;
+    const length = Number(entity.length) || 0;
+    const end = start + length;
+    const charStart = utf16IndexToStringIndex(text, start);
+    const charEnd = utf16IndexToStringIndex(text, end);
+    if (charStart < 0 || charEnd <= charStart || charStart < cursor) continue;
+    parts.push(characters.slice(cursor, charStart).join(''));
+    parts.push(fallbackEmojiForEntity(entity, parts.length));
+    cursor = charEnd;
+  }
+
+  parts.push(characters.slice(cursor).join(''));
+  return parts.join('');
+}
+
+function utf16IndexToStringIndex(value, offset) {
+  let cursor = 0;
+  let utf16Cursor = 0;
+  for (const character of value) {
+    const length = character.codePointAt(0) > 0xffff ? 2 : 1;
+    if (utf16Cursor >= offset) return cursor;
+    utf16Cursor += length;
+    cursor += character.length;
+  }
+  return utf16Cursor >= offset ? cursor : value.length;
+}
+
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorChatId = null) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
   const keyboard = new InlineKeyboard().add({
@@ -21,27 +64,14 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorCh
     style: giveaway.buttonStyle ?? 'primary'
   });
   const customEmojiEntities = normalizeCustomEmojiEntities(giveaway.entities);
-  const entityOptions = customEmojiEntities.length ? { entities: customEmojiEntities } : {};
-  const mediaOptions = { caption: text, reply_markup: keyboard, ...entityOptions, caption_entities: customEmojiEntities.length ? customEmojiEntities : undefined };
-  const options = { reply_markup: keyboard, ...entityOptions };
-
-  if (moderatorChatId && customEmojiEntities.length) {
-    try {
-      const draft = await bot.api.sendMessage(moderatorChatId, text, { entities: customEmojiEntities, disable_web_page_preview: true });
-      const copied = await bot.api.copyMessage(channelId, moderatorChatId, draft.message_id);
-      if (keyboard?.inline_keyboard?.length) {
-        await bot.api.editMessageReplyMarkup(channelId, copied.message_id, { inline_keyboard: keyboard.inline_keyboard });
-      }
-      return copied;
-    } catch (error) {
-      console.warn('Не удалось опубликовать premium post через copyMessage, откатываемся на обычный пост:', error.message);
-    }
-  }
+  const safeText = customEmojiEntities.length ? replaceCustomEmojiWithFallback(text, customEmojiEntities) : text;
+  const mediaOptions = { caption: safeText, reply_markup: keyboard };
+  const options = { reply_markup: keyboard };
 
   if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);
   if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, mediaOptions);
   if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, mediaOptions);
-  return bot.api.sendMessage(channelId, text, options);
+  return bot.api.sendMessage(channelId, safeText, options);
 }
 
 function utf16Length(value) {
