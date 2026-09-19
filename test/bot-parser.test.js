@@ -61,7 +61,8 @@ test('publishes premium emoji entities in channel posts', async () => {
 
   assert.equal(payload[0], '-1001');
   assert.equal(payload[1], '🎁 Билеты\n\nПремиум ✅');
-  assert.deepEqual(payload[2].entities, [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: 123456789 }]);
+  assert.equal(payload[2].parse_mode, undefined);
+  assert.deepEqual(payload[2].entities, [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: '123456789' }]);
 });
 
 test('keeps consecutive custom emoji with different UTF-16 lengths', () => {

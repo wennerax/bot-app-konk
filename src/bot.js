@@ -2,6 +2,17 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from './domain/giveaway.js';
 import { checkRequiredChannels, findAdminChannels } from './services/subscription.js';
 
+function normalizeCustomEmojiEntities(entities = []) {
+  return entities
+    .filter((entity) => entity && entity.type === 'custom_emoji' && entity.custom_emoji_id)
+    .map((entity) => ({
+      ...entity,
+      custom_emoji_id: String(entity.custom_emoji_id),
+      offset: Number(entity.offset) || 0,
+      length: Number(entity.length) || 0
+    }));
+}
+
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
   const keyboard = new InlineKeyboard().add({
@@ -9,8 +20,9 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
     url: miniAppUrl,
     style: giveaway.buttonStyle ?? 'primary'
   });
-  const entityOptions = Array.isArray(giveaway.entities) && giveaway.entities.length ? { entities: giveaway.entities } : {};
-  const mediaOptions = { caption: text, reply_markup: keyboard, ...entityOptions, caption_entities: entityOptions.entities ?? undefined };
+  const customEmojiEntities = normalizeCustomEmojiEntities(giveaway.entities);
+  const entityOptions = customEmojiEntities.length ? { entities: customEmojiEntities } : {};
+  const mediaOptions = { caption: text, reply_markup: keyboard, ...entityOptions, caption_entities: customEmojiEntities.length ? customEmojiEntities : undefined };
   const options = { reply_markup: keyboard, ...entityOptions };
   if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);
   if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, mediaOptions);
@@ -36,6 +48,12 @@ export { publishGiveaway };
 
 function getMessageEntities(message) {
   return message?.entities ?? message?.caption_entities ?? [];
+}
+
+function shiftEntitiesToText(entities = [], startOffset = 0) {
+  return entities
+    .filter((entity) => entity.offset >= startOffset)
+    .map((entity) => ({ ...entity, offset: entity.offset - startOffset }));
 }
 
 function customEmojiCount(entities = []) {
@@ -625,7 +643,10 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
         : sourceMessage?.video ? { type: 'video', fileId: sourceMessage.video.file_id }
           : sourceMessage?.document ? { type: 'document', fileId: sourceMessage.document.file_id } : null;
       const sourceText = context.match.trim();
-      const parsed = parseGiveawayInput(sourceText);
+      const fullText = context.msg?.text ?? sourceText;
+      const sourceStart = fullText.indexOf(sourceText);
+      const messageEntities = getMessageEntities(context.msg).filter((entity) => entity.offset >= (sourceStart < 0 ? 0 : sourceStart));
+      const parsed = parseGiveawayInput(sourceText, shiftEntitiesToText(messageEntities, sourceStart < 0 ? 0 : sourceStart));
       const channelSettings = await store.getChannel(channelId);
       const giveaway = createGiveaway({
         title: parsed.title,
