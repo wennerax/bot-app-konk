@@ -261,6 +261,12 @@ function channelListKeyboard(channels) {
   return keyboard;
 }
 
+const mainMenuKeyboard = {
+  keyboard: [['ℹ️ Меню']],
+  resize_keyboard: true,
+  is_persistent: true
+};
+
 function channelSettingsKeyboard(channel) {
   const keyboard = new InlineKeyboard()
     .text('🎁 Настройка конкурсов', `contests_menu:${channel.id}`).row();
@@ -322,7 +328,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 
   bot.command('start', async (context) => {
     const payload = context.match?.trim();
-    if (!payload?.startsWith('g_')) return context.reply('Привет! Открой конкурс из канала или используй /menu.');
+    if (!payload?.startsWith('g_')) return context.reply('Привет! Открой конкурс из канала или нажми «ℹ️ Меню».', { reply_markup: mainMenuKeyboard });
     const giveaway = await store.getGiveaway(payload.slice(2));
     if (!giveaway) return context.reply('Этот конкурс больше не найден.');
     const check = await checkRequiredChannels(bot, context.from.id, giveaway.requiredChannels);
@@ -350,12 +356,15 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     return context.reply(result.added ? 'Подписка подтверждена, ты участвуешь!' : 'Ты уже участвуешь.');
   });
 
-  bot.command('menu', async (context) => {
+  const showMenu = async (context) => {
     const discoveredChannels = await store.listChannels();
     const channels = await findAdminChannels(bot, context.from.id, discoveredChannels);
-    if (!channels.length) return context.reply('Каналы пока не обнаружены. Добавь бота администратором канала и создай/отредактируй пост в канале, чтобы Telegram прислал событие боту.');
+    if (!channels.length) return context.reply('Каналы пока не обнаружены. Добавь бота администратором канала и создай/отредактируй пост в канале, чтобы Telegram прислал событие боту.', { reply_markup: mainMenuKeyboard });
     return context.reply('🎛 Выберите канал для настройки:', { reply_markup: channelListKeyboard(channels) });
-  });
+  };
+
+  bot.command('menu', showMenu);
+  bot.hears('ℹ️ Меню', showMenu);
 
   bot.callbackQuery(/^channel_settings:(.+)$/, async (context) => {
     await context.answerCallbackQuery();
