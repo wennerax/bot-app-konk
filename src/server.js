@@ -67,7 +67,7 @@ export function buildServer({ bot, store, botToken } = {}) {
     giveaway.requiredChannels = ensurePrimaryChannel(giveaway.channelId, giveaway.requiredChannels);
     const check = await checkRequiredChannels(bot, user.id, giveaway.requiredChannels);
     if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels, missingChannels: check.channels.filter((channel) => !channel.isMember) });
-    const result = addParticipant(giveaway, user.id);
+    const result = addParticipant(giveaway, user.id, user);
     await giveawayStore.saveGiveaway(giveaway);
     return { ...result, giveawayId: giveaway.id };
   });

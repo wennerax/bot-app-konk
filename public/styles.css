@@ -153,3 +153,5 @@ body.is-scrolling::after { opacity: .28; }
 @media (prefers-reduced-motion: reduce) {
 	body::before, body::after { transition: none; }
 }
+
+.meta { white-space: pre-line; }

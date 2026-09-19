@@ -30,6 +30,13 @@ function renderDescription(container, value) {
   container.append(document.createTextNode(text.slice(cursor)));
 }
 
+function formatResultDate(value) {
+  if (!value) return 'вручную';
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow', dateStyle: 'short', timeStyle: 'short'
+  }).format(new Date(value));
+}
+
 function updateLight() {
   const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
   const progress = Math.min(window.scrollY / maxScroll, 1);
@@ -72,7 +79,7 @@ function render(giveaways) {
     const fragment = template.content.cloneNode(true);
     fragment.querySelector('.number').textContent = String(index + 1).padStart(2, '0');
     fragment.querySelector('h2').textContent = giveaway.title;
-    fragment.querySelector('.meta').textContent = `${giveaway.participants.length} участников · ${giveaway.winnersCount} победител${giveaway.winnersCount === 1 ? 'ь' : 'я'}`;
+    fragment.querySelector('.meta').textContent = `${giveaway.participants.length} участников · ${giveaway.winnersCount} победител${giveaway.winnersCount === 1 ? 'ь' : 'я'}\nИтоги: ${giveaway.status === 'finished' ? 'подведены' : formatResultDate(giveaway.endsAt)}`;
     renderDescription(fragment.querySelector('.description'), giveaway.description);
     if (giveaway.media?.type === 'photo') {
       const image = document.createElement('img');

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS giveaways (
   winners_count INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',
   winners JSONB NOT NULL DEFAULT '[]'::jsonb,
+  participant_profiles JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL,
   ends_at TIMESTAMPTZ
 );
@@ -63,6 +64,7 @@ function mapGiveaway(row, participantRows) {
     winnersCount: row.winners_count,
     status: row.status,
     participants: participantRows.map((participant) => participant.user_id),
+      participantProfiles: row.participant_profiles ?? {},
     winners: row.winners,
     createdAt: new Date(row.created_at).toISOString(),
     endsAt: row.ends_at ? new Date(row.ends_at).toISOString() : null
@@ -72,6 +74,7 @@ function mapGiveaway(row, participantRows) {
 export async function createPostgresStore(databaseUrl) {
   const pool = new Pool({ connectionString: databaseUrl, max: 5, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false } });
   await pool.query(schema);
+  await pool.query("ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS participant_profiles JSONB NOT NULL DEFAULT '{}'::jsonb");
 
   async function loadGiveaway(id) {
     const result = await pool.query('SELECT * FROM giveaways WHERE id = $1', [id]);
@@ -83,10 +86,10 @@ export async function createPostgresStore(databaseUrl) {
   return {
     async saveGiveaway(giveaway) {
       await pool.query(`
-        INSERT INTO giveaways (id, title, description, source_text, channel_id, required_channels, mini_app_button_color, media, entities, winners_count, status, winners, created_at, ends_at)
-        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9::jsonb,$10,$11,$12::jsonb,$13,$14)
-        ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, description=EXCLUDED.description, source_text=EXCLUDED.source_text, channel_id=EXCLUDED.channel_id, required_channels=EXCLUDED.required_channels, mini_app_button_color=EXCLUDED.mini_app_button_color, media=EXCLUDED.media, entities=EXCLUDED.entities, winners_count=EXCLUDED.winners_count, status=EXCLUDED.status, winners=EXCLUDED.winners, ends_at=EXCLUDED.ends_at
-      `, [giveaway.id, giveaway.title, giveaway.description, giveaway.sourceText ?? '', giveaway.channelId, JSON.stringify(giveaway.requiredChannels), giveaway.miniAppButtonColor, JSON.stringify(giveaway.media), JSON.stringify(giveaway.entities), giveaway.winnersCount, giveaway.status, JSON.stringify(giveaway.winners), giveaway.createdAt, giveaway.endsAt]);
+        INSERT INTO giveaways (id, title, description, source_text, channel_id, required_channels, mini_app_button_color, media, entities, winners_count, status, winners, participant_profiles, created_at, ends_at)
+        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9::jsonb,$10,$11,$12::jsonb,$13::jsonb,$14,$15)
+        ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, description=EXCLUDED.description, source_text=EXCLUDED.source_text, channel_id=EXCLUDED.channel_id, required_channels=EXCLUDED.required_channels, mini_app_button_color=EXCLUDED.mini_app_button_color, media=EXCLUDED.media, entities=EXCLUDED.entities, winners_count=EXCLUDED.winners_count, status=EXCLUDED.status, winners=EXCLUDED.winners, participant_profiles=EXCLUDED.participant_profiles, ends_at=EXCLUDED.ends_at
+      `, [giveaway.id, giveaway.title, giveaway.description, giveaway.sourceText ?? '', giveaway.channelId, JSON.stringify(giveaway.requiredChannels), giveaway.miniAppButtonColor, JSON.stringify(giveaway.media), JSON.stringify(giveaway.entities), giveaway.winnersCount, giveaway.status, JSON.stringify(giveaway.winners), JSON.stringify(giveaway.participantProfiles ?? {}), giveaway.createdAt, giveaway.endsAt]);
       await pool.query('DELETE FROM participants WHERE giveaway_id = $1', [giveaway.id]);
       if (giveaway.participants.length) {
         await pool.query(`INSERT INTO participants (giveaway_id, user_id) SELECT $1, UNNEST($2::text[]) ON CONFLICT DO NOTHING`, [giveaway.id, giveaway.participants]);

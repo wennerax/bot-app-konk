@@ -42,17 +42,26 @@ export function createGiveaway(input, now = new Date()) {
     winnersCount,
     status: input.status ?? 'active',
     participants: [],
+    participantProfiles: {},
     winners: [],
     createdAt: now.toISOString(),
     endsAt: input.endsAt ? new Date(input.endsAt).toISOString() : null
   };
 }
 
-export function addParticipant(giveaway, userId) {
+export function addParticipant(giveaway, userId, profile = null) {
   const normalizedId = String(userId);
   if (giveaway.status !== 'active') return { added: false, reason: 'closed' };
   if (giveaway.participants.includes(normalizedId)) return { added: false, reason: 'already_joined' };
   giveaway.participants.push(normalizedId);
+  if (profile) {
+    giveaway.participantProfiles ??= {};
+    giveaway.participantProfiles[normalizedId] = {
+      username: profile.username ?? null,
+      firstName: profile.first_name ?? profile.firstName ?? null,
+      lastName: profile.last_name ?? profile.lastName ?? null
+    };
+  }
   return { added: true, reason: 'joined' };
 }
 

@@ -54,8 +54,8 @@ test('publishes premium emoji entities in channel posts', async () => {
   const bot = { api: { sendMessage: async (...args) => { payload = args; } } };
   await publishGiveaway(bot, '-1001', {
     title: 'Билеты',
-    description: 'Премиум ✅',
-    entities: [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: 123456789 }],
+    description: 'Премиум ✨',
+    entities: [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: '123456789' }],
     buttonStyle: 'primary'
   }, 'https://t.me/example?startapp=g_1');
 

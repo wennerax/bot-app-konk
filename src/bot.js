@@ -231,7 +231,7 @@ export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
       const winners = pickWinners(giveaway);
       await store.saveGiveaway(giveaway);
       console.log(`Giveaway ${giveaway.id} finished automatically at ${formatMoscowDate(new Date().toISOString())} MSK`);
-      const winnerText = winners.length ? winners.map((id, index) => `${index + 1}. <a href="tg://user?id=${id}">${id}</a>`).join('\n') : 'Участников нет.';
+      const winnerText = formatWinnerList(giveaway, winners);
       try {
         await bot.api.sendMessage(giveaway.channelId, `🏆 Итоги конкурса «${giveaway.title}»\n\nПобедители:\n${winnerText}`, { parse_mode: 'HTML' });
       } catch (error) {
@@ -334,7 +334,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       keyboard.text('Проверить подписку', `check_${giveaway.id}`);
       return context.reply('Сначала подпишись на обязательные каналы, затем нажми проверку.', { reply_markup: keyboard });
     }
-    const result = addParticipant(giveaway, context.from.id);
+    const result = addParticipant(giveaway, context.from.id, context.from);
     await store.saveGiveaway(giveaway);
     return context.reply(result.added ? 'Готово, ты участвуешь в конкурсе!' : 'Ты уже участвуешь в этом конкурсе.');
   });
@@ -345,7 +345,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     if (!giveaway) return context.reply('Конкурс больше не найден.');
     const check = await checkRequiredChannels(bot, context.from.id, giveaway.requiredChannels);
     if (!check.passed) return context.reply('Подписка пока не подтверждена.');
-    const result = addParticipant(giveaway, context.from.id);
+    const result = addParticipant(giveaway, context.from.id, context.from);
     await store.saveGiveaway(giveaway);
     return context.reply(result.added ? 'Подписка подтверждена, ты участвуешь!' : 'Ты уже участвуешь.');
   });
@@ -409,7 +409,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     if (giveaway.status !== 'active') return context.reply('Конкурс уже завершён.');
     const winners = pickWinners(giveaway);
     await store.saveGiveaway(giveaway);
-    const winnerText = winners.length ? winners.map((id, index) => `${index + 1}. <a href="tg://user?id=${id}">${id}</a>`).join('\n') : 'Участников нет.';
+    const winnerText = formatWinnerList(giveaway, winners);
     await bot.api.sendMessage(giveaway.channelId, `🏆 Итоги конкурса «${giveaway.title}»\n\nПобедители:\n${winnerText}`, { parse_mode: 'HTML' });
     for (const winnerId of winners) {
       try {
@@ -773,4 +773,20 @@ function contestConditionsKeyboard(giveaway) {
   }
   keyboard.text('➕ Добавить партнёров', `contest_conditions_edit:${giveaway.id}`).row();
   return keyboard.text('⬅️ Назад', `contest_settings:${giveaway.id}`);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+}
+
+function formatWinner(giveaway, userId, place) {
+  const profile = giveaway.participantProfiles?.[String(userId)] ?? {};
+  const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
+  const label = profile.username ? `@${profile.username}` : fullName || `ID ${userId}`;
+  const suffix = profile.username && fullName ? ` (${fullName})` : '';
+  return `${place}. <a href="tg://user?id=${encodeURIComponent(userId)}">${escapeHtml(label)}${escapeHtml(suffix)}</a>`;
+}
+
+function formatWinnerList(giveaway, winners) {
+  return winners.length ? winners.map((id, index) => formatWinner(giveaway, id, index + 1)).join('\n') : 'Участников нет.';
 }

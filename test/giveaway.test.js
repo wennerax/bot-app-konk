@@ -20,7 +20,8 @@ test('creates a giveaway with defaults', () => {
 
 test('registers a participant only once', () => {
   const giveaway = createGiveaway({ title: 'Приз', channelId: '-1001', winnersCount: 1 });
-  assert.deepEqual(addParticipant(giveaway, 42), { added: true, reason: 'joined' });
+  assert.deepEqual(addParticipant(giveaway, 42, { username: 'winner', first_name: 'Иван' }), { added: true, reason: 'joined' });
+  assert.deepEqual(giveaway.participantProfiles['42'], { username: 'winner', firstName: 'Иван', lastName: null });
   assert.deepEqual(addParticipant(giveaway, 42), { added: false, reason: 'already_joined' });
 });
 
