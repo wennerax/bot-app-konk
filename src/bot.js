@@ -86,8 +86,17 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorCh
   const customEmojiEntities = normalizeCustomEmojiEntities(giveaway.entities);
   const safeText = customEmojiEntities.length ? replaceCustomEmojiWithFallback(text, customEmojiEntities) : text;
   const { text: textWithLinks, entities: linkEntities } = convertMarkdownLinksToTelegramEntities(safeText);
-  const options = { reply_markup: keyboard, ...(linkEntities.length ? { entities: linkEntities } : {}) };
-  const mediaOptions = { caption: textWithLinks, reply_markup: keyboard, ...(linkEntities.length ? { caption_entities: linkEntities } : {}) };
+  const options = {
+    reply_markup: keyboard,
+    disable_web_page_preview: true,
+    ...(linkEntities.length ? { entities: linkEntities } : {})
+  };
+  const mediaOptions = {
+    caption: textWithLinks,
+    reply_markup: keyboard,
+    disable_web_page_preview: true,
+    ...(linkEntities.length ? { caption_entities: linkEntities } : {})
+  };
 
   if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);
   if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, mediaOptions);
@@ -481,7 +490,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       if (!giveaway) return context.reply('Конкурс не найден.');
       pendingActions.set(String(context.from.id), { type: `contest_${field}`, giveawayId: giveaway.id });
       const prompt = field === 'name' ? 'Отправьте новое название конкурса.'
-        : field === 'description' ? 'Отправьте новое описание конкурса.'
+        : field === 'description' ? 'Отправьте новое описание конкурса. Для ссылок используйте формат [слово](https://example.com).'
           : field === 'conditions' ? 'Отправьте @партнёров через запятую или «нет».'
             : 'Отправьте дату итогов по Москве YYYY-MM-DD HH:mm или «нет».';
       return context.editMessageText(`✏️ ${prompt}`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `contest_settings:${giveaway.id}`) });
@@ -499,7 +508,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     await context.answerCallbackQuery();
     const channelId = context.match[1];
     pendingActions.set(String(context.from.id), { type: 'create', channelId });
-    return context.editMessageText(`🎁 Создание конкурса\n\nТеперь отправьте одним сообщением:\nНазвание конкурса | количество победителей | описание\n\nПример:\nБилеты на концерт | 2 | Подпишись на канал и участвуй`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${channelId}`) });
+    return context.editMessageText(`🎁 Создание конкурса\n\nТеперь отправьте одним сообщением:\nНазвание конкурса | количество победителей | описание\n\nПоддерживаются ссылки в описании в формате [слово](https://example.com)\nПример:\nБилеты на концерт | 2 | Подпишись на [канал](https://example.com) и участвуй\n\nСсылки будут кликабельными, без предпросмотра.`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${channelId}`) });
   });
 
   bot.callbackQuery(/^conditions_help:(.+)$/, async (context) => {

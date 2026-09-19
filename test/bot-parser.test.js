@@ -60,46 +60,25 @@ test('publishes premium emoji entities in channel posts', async () => {
   }, 'https://t.me/example?startapp=g_1');
 
   assert.equal(payload[0], '-1001');
-  assert.equal(payload[1], '🎁 Билеты\n\nПремиум ✅');
-  assert.equal(payload[2].parse_mode, undefined);
-  assert.deepEqual(payload[2].entities, [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: '123456789' }]);
+  assert.equal(payload[1], '🎁 Билеты\n\nПремиум ✨');
+  assert.equal(payload[2].disable_web_page_preview, true);
+  assert.equal(payload[2].reply_markup.text, 'Участвовать');
+  assert.equal(payload[2].reply_markup.url, 'https://t.me/example?startapp=g_1');
 });
 
-test('copies premium emoji post from moderator chat to the channel and restores the button', async () => {
-  const calls = [];
-  const bot = {
-    api: {
-      sendMessage: async (chatId, text, options) => {
-        calls.push(['sendMessage', chatId, text, options]);
-        return { message_id: 77 };
-      },
-      copyMessage: async (...args) => {
-        calls.push(['copyMessage', ...args]);
-        return { message_id: 88 };
-      },
-      editMessageReplyMarkup: async (...args) => {
-        calls.push(['editMessageReplyMarkup', ...args]);
-        return true;
-      }
-    }
-  };
+test('converts markdown links to clickable Telegram link entities without page preview', async () => {
+  let payload;
+  const bot = { api: { sendMessage: async (...args) => { payload = args; } } };
 
   await publishGiveaway(bot, '-1001', {
     title: 'Билеты',
-    description: 'Премиум ✅',
-    entities: [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: 123456789 }],
+    description: 'Подпишись на [канал](https://example.com)',
     buttonStyle: 'primary'
-  }, 'https://t.me/example?startapp=g_1', 42);
+  }, 'https://t.me/example?startapp=g_1');
 
-  assert.equal(calls[0][0], 'sendMessage');
-  assert.equal(calls[0][1], 42);
-  assert.equal(calls[1][0], 'copyMessage');
-  assert.equal(calls[1][1], '-1001');
-  assert.equal(calls[1][2], 42);
-  assert.equal(calls[1][3], 77);
-  assert.equal(calls[2][0], 'editMessageReplyMarkup');
-  assert.equal(calls[2][1], '-1001');
-  assert.equal(calls[2][2], 88);
+  assert.equal(payload[1], '🎁 Билеты\n\nПодпишись на канал');
+  assert.equal(payload[2].disable_web_page_preview, true);
+  assert.ok(payload[2].entities.some((entity) => entity.type === 'text_link' && entity.url === 'https://example.com'));
 });
 
 test('keeps consecutive custom emoji with different UTF-16 lengths', () => {
