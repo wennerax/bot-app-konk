@@ -27,7 +27,9 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorCh
 
   if (moderatorChatId && customEmojiEntities.length) {
     const draft = await bot.api.sendMessage(moderatorChatId, text, { entities: customEmojiEntities, disable_web_page_preview: true });
-    return bot.api.forwardMessage(channelId, moderatorChatId, draft.message_id);
+    const copied = await bot.api.copyMessage(channelId, moderatorChatId, draft.message_id);
+    await bot.api.editMessageReplyMarkup(channelId, copied.message_id, { inline_keyboard: keyboard.inline_keyboard });
+    return copied;
   }
 
   if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);
