@@ -13,7 +13,7 @@ function normalizeCustomEmojiEntities(entities = []) {
     }));
 }
 
-async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
+async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorChatId = null) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
@@ -24,6 +24,12 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl) {
   const entityOptions = customEmojiEntities.length ? { entities: customEmojiEntities } : {};
   const mediaOptions = { caption: text, reply_markup: keyboard, ...entityOptions, caption_entities: customEmojiEntities.length ? customEmojiEntities : undefined };
   const options = { reply_markup: keyboard, ...entityOptions };
+
+  if (moderatorChatId && customEmojiEntities.length) {
+    const draft = await bot.api.sendMessage(moderatorChatId, text, { entities: customEmojiEntities, disable_web_page_preview: true });
+    return bot.api.forwardMessage(channelId, moderatorChatId, draft.message_id);
+  }
+
   if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);
   if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, mediaOptions);
   if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, mediaOptions);
@@ -324,7 +330,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     giveaway.status = 'active';
     await store.saveGiveaway(giveaway);
     const username = (await bot.api.getMe()).username;
-    await publishGiveaway(bot, giveaway.channelId, giveaway, getParticipationLink(username, giveaway.id));
+    await publishGiveaway(bot, giveaway.channelId, giveaway, getParticipationLink(username, giveaway.id), context.from.id);
     return context.editMessageText(`✅ Конкурс опубликован: ${giveaway.title}`);
   });
 
@@ -663,7 +669,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       });
       await store.saveGiveaway(giveaway);
       const username = (await bot.api.getMe()).username;
-      await publishGiveaway(bot, channelId, giveaway, getParticipationLink(username, giveaway.id));
+      await publishGiveaway(bot, channelId, giveaway, getParticipationLink(username, giveaway.id), context.from.id);
       await context.reply(`Конкурс создан: ${giveaway.id}`);
     } catch (error) {
       await context.reply(`Не удалось создать конкурс: ${error.message}`);

@@ -65,6 +65,35 @@ test('publishes premium emoji entities in channel posts', async () => {
   assert.deepEqual(payload[2].entities, [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: '123456789' }]);
 });
 
+test('forwards premium emoji post from moderator chat to the channel', async () => {
+  const calls = [];
+  const bot = {
+    api: {
+      sendMessage: async (chatId, text, options) => {
+        calls.push(['sendMessage', chatId, text, options]);
+        return { message_id: 77 };
+      },
+      forwardMessage: async (...args) => {
+        calls.push(['forwardMessage', ...args]);
+        return { message_id: 88 };
+      }
+    }
+  };
+
+  await publishGiveaway(bot, '-1001', {
+    title: 'Билеты',
+    description: 'Премиум ✅',
+    entities: [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: 123456789 }],
+    buttonStyle: 'primary'
+  }, 'https://t.me/example?startapp=g_1', 42);
+
+  assert.equal(calls[0][0], 'sendMessage');
+  assert.equal(calls[0][1], 42);
+  assert.equal(calls[1][0], 'forwardMessage');
+  assert.equal(calls[1][1], '-1001');
+  assert.equal(calls[1][2], 77);
+});
+
 test('keeps consecutive custom emoji with different UTF-16 lengths', () => {
   const text = 'Билеты | 2 | Подпишись 💜 ✅';
   const firstOffset = text.indexOf('💜');
