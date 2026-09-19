@@ -26,10 +26,16 @@ async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorCh
   const options = { reply_markup: keyboard, ...entityOptions };
 
   if (moderatorChatId && customEmojiEntities.length) {
-    const draft = await bot.api.sendMessage(moderatorChatId, text, { entities: customEmojiEntities, disable_web_page_preview: true });
-    const copied = await bot.api.copyMessage(channelId, moderatorChatId, draft.message_id);
-    await bot.api.editMessageReplyMarkup(channelId, copied.message_id, { inline_keyboard: keyboard.inline_keyboard });
-    return copied;
+    try {
+      const draft = await bot.api.sendMessage(moderatorChatId, text, { entities: customEmojiEntities, disable_web_page_preview: true });
+      const copied = await bot.api.copyMessage(channelId, moderatorChatId, draft.message_id);
+      if (keyboard?.inline_keyboard?.length) {
+        await bot.api.editMessageReplyMarkup(channelId, copied.message_id, { inline_keyboard: keyboard.inline_keyboard });
+      }
+      return copied;
+    } catch (error) {
+      console.warn('Не удалось опубликовать premium post через copyMessage, откатываемся на обычный пост:', error.message);
+    }
   }
 
   if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);

@@ -65,7 +65,7 @@ test('publishes premium emoji entities in channel posts', async () => {
   assert.deepEqual(payload[2].entities, [{ type: 'custom_emoji', offset: 19, length: 1, custom_emoji_id: '123456789' }]);
 });
 
-test('copies premium emoji post from moderator chat to the channel without showing forwarded label', async () => {
+test('copies premium emoji post from moderator chat to the channel and restores the button', async () => {
   const calls = [];
   const bot = {
     api: {
@@ -76,6 +76,10 @@ test('copies premium emoji post from moderator chat to the channel without showi
       copyMessage: async (...args) => {
         calls.push(['copyMessage', ...args]);
         return { message_id: 88 };
+      },
+      editMessageReplyMarkup: async (...args) => {
+        calls.push(['editMessageReplyMarkup', ...args]);
+        return true;
       }
     }
   };
@@ -93,6 +97,9 @@ test('copies premium emoji post from moderator chat to the channel without showi
   assert.equal(calls[1][1], '-1001');
   assert.equal(calls[1][2], 42);
   assert.equal(calls[1][3], 77);
+  assert.equal(calls[2][0], 'editMessageReplyMarkup');
+  assert.equal(calls[2][1], '-1001');
+  assert.equal(calls[2][2], 88);
 });
 
 test('keeps consecutive custom emoji with different UTF-16 lengths', () => {
