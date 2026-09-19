@@ -162,11 +162,18 @@ export function parseGiveawayInput(text, entities = []) {
 }
 
 function parseDateInput(value) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value);
+  const match = /^(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value);
   if (!match) return null;
-  const [, year, month, day, hour, minute] = match;
-  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 3, Number(minute)));
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  const [, monthText, dayText, hourText, minuteText] = match;
+  const year = new Date().getFullYear();
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth || hour > 23 || minute > 59) return null;
+  const date = new Date(Date.UTC(year, month - 1, day, hour - 3, minute));
+  return date.toISOString();
 }
 
 function formatMoscowDate(value) {
@@ -404,8 +411,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 Используйте обычные эмодзи. Premium-эмодзи будут заменены автоматически.
 
 После описания бот попросит дату итогов:
-YYYY-MM-DD HH:mm
-Например: 2026-10-01 20:00
+MM-DD HH:mm
+Например: 10-01 20:00
 Или отправьте «нет», чтобы подвести итоги вручную.`);
   });
 
@@ -518,7 +525,7 @@ YYYY-MM-DD HH:mm
       const prompt = field === 'name' ? 'Отправьте новое название конкурса.'
         : field === 'description' ? 'Отправьте новое описание конкурса. Для ссылок используйте формат [слово](https://example.com).'
           : field === 'conditions' ? 'Отправьте @партнёров через запятую или «нет».'
-            : 'Отправьте дату итогов по Москве YYYY-MM-DD HH:mm или «нет».';
+            : 'Отправьте дату итогов по Москве в формате MM-DD HH:mm или «нет».';
       return context.editMessageText(`✏️ ${prompt}`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `contest_settings:${giveaway.id}`) });
     });
   }
@@ -552,7 +559,7 @@ YYYY-MM-DD HH:mm
     const channel = await store.getChannel(context.match[1]);
     const current = channel?.defaultEndsAt ? formatMoscowDate(channel.defaultEndsAt) : 'не задана';
     pendingActions.set(String(context.from.id), { type: 'ends_at', channelId: context.match[1] });
-    return context.editMessageText(`⏰ Дата итогов по Москве\n\nТекущая дата: ${current}\n\nОтправьте московскую дату и время:\nYYYY-MM-DD HH:mm\n\nПример: 2026-10-01 20:00\n\nЧтобы отключить автоматические итоги, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
+    return context.editMessageText(`⏰ Дата итогов по Москве\n\nТекущая дата: ${current}\n\nОтправьте московские месяц, день и время:\nMM-DD HH:mm\n\nПример: 10-01 20:00\n\nГод подставится автоматически: ${new Date().getFullYear()}\n\nЧтобы отключить автоматические итоги, отправьте: нет`, { reply_markup: new InlineKeyboard().text('⬅️ Назад', `channel_settings:${context.match[1]}`) });
   });
 
   bot.callbackQuery(/^color_help:(.+)$/, async (context) => {
@@ -609,7 +616,7 @@ YYYY-MM-DD HH:mm
       const channelSettings = await store.getChannel(action.channelId);
         pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: caption, winnersCount: winnersText, channelId: action.channelId, media, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
         const emojiIds = entities.filter((entity) => entity.type === 'custom_emoji').map((entity) => entity.custom_emoji_id ?? 'без ID');
-        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)} (${emojiIds.join(', ') || 'нет ID'}).\nТеперь отправьте дату итогов по Москве:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.`);
+        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)} (${emojiIds.join(', ') || 'нет ID'}).\nТеперь отправьте дату итогов по Москве:\nMM-DD HH:mm\n\nГод подставится автоматически: ${new Date().getFullYear()}\nИли отправьте «нет», чтобы подводить итоги вручную.`);
     } catch (error) {
       return context.reply(`Не удалось опубликовать медиа-конкурс: ${error.message}`);
     }
@@ -631,7 +638,7 @@ YYYY-MM-DD HH:mm
         const channelSettings = await store.getChannel(action.channelId);
         pendingActions.set(String(context.from.id), { type: 'create_confirm', draft: { title, description, entities, sourceText: context.msg.text, winnersCount: winnersText, channelId: action.channelId, requiredChannels: channelSettings?.requiredChannels ?? [], miniAppButtonColor: channelSettings?.miniAppButtonColor, buttonStyle: channelSettings?.buttonStyle } });
         const emojiIds = entities.filter((entity) => entity.type === 'custom_emoji').map((entity) => entity.custom_emoji_id ?? 'без ID');
-        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)} (${emojiIds.join(', ') || 'нет ID'}).\nТеперь отправьте дату итогов:\nYYYY-MM-DD HH:mm\n\nИли отправьте «нет», чтобы подводить итоги вручную.`);
+        return context.reply(`Получено premium emoji: ${customEmojiCount(entities)} (${emojiIds.join(', ') || 'нет ID'}).\nТеперь отправьте дату итогов:\nMM-DD HH:mm\n\nГод подставится автоматически: ${new Date().getFullYear()}\nИли отправьте «нет», чтобы подводить итоги вручную.`);
       } catch (error) {
         return context.reply(`Не удалось создать конкурс: ${error.message}`);
       }
@@ -657,7 +664,7 @@ YYYY-MM-DD HH:mm
         }
         if (action.type === 'contest_ends') {
           giveaway.endsAt = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
-          if (context.msg.text.trim().toLowerCase() !== 'нет' && !giveaway.endsAt) return context.reply('Неверная дата. Формат: 2026-10-01 20:00');
+          if (context.msg.text.trim().toLowerCase() !== 'нет' && !giveaway.endsAt) return context.reply('Неверная дата. Формат: MM-DD HH:mm, например 10-01 20:00');
         }
         if (action.type === 'contest_conditions') {
           const references = context.msg.text.trim().toLowerCase() === 'нет' ? [] : context.msg.text.split(',').map((item) => item.trim()).filter(Boolean);
@@ -683,7 +690,7 @@ YYYY-MM-DD HH:mm
     }
     if (action.type === 'create_confirm') {
       const endsAt = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
-      if (context.msg.text.trim().toLowerCase() !== 'нет' && !endsAt) return context.reply('Неверная дата. Используйте формат: 2026-10-01 20:00 или отправьте «нет».');
+      if (context.msg.text.trim().toLowerCase() !== 'нет' && !endsAt) return context.reply('Неверная дата. Используйте формат: MM-DD HH:mm, например 10-01 20:00, или отправьте «нет».');
       try {
         const giveaway = createGiveaway({ ...action.draft, endsAt, status: 'draft' });
         await store.saveGiveaway(giveaway);
@@ -694,7 +701,7 @@ YYYY-MM-DD HH:mm
     }
     if (action.type === 'ends_at') {
       const value = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
-      if (context.msg.text.trim().toLowerCase() !== 'нет' && !value) return context.reply('Неверная дата. Используйте формат: 2026-10-01 20:00');
+      if (context.msg.text.trim().toLowerCase() !== 'нет' && !value) return context.reply('Неверная дата. Используйте формат: MM-DD HH:mm, например 10-01 20:00');
       const channel = await store.getChannel(action.channelId) ?? { id: action.channelId, title: action.channelId };
       await store.saveChannel({ ...channel, defaultEndsAt: value });
       return context.reply(value ? `Дата итогов по Москве сохранена: ${formatMoscowDate(value)}` : 'Автоматическая дата итогов отключена.');
