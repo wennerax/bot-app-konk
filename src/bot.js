@@ -380,7 +380,24 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
   bot.callbackQuery(/^contest_create:(.+)$/, async (context) => {
     await context.answerCallbackQuery();
     pendingActions.set(String(context.from.id), { type: 'create', channelId: context.match[1] });
-    return context.editMessageText('➕ Новый конкурс\n\nОтправьте:\nНазвание | количество победителей | описание\n\nПример:\nБилеты | 2 | Подпишись и участвуй');
+    return context.editMessageText(`➕ Новый конкурс
+
+Отправьте одним сообщением:
+Название | количество победителей | описание
+
+Пример:
+Билеты | 2 | Подпишись на [канал](https://t.me/example) и участвуй
+
+Как сделать слово ссылкой:
+[слово](https://ссылка)
+
+Ссылка будет кликабельной, но предпросмотра не будет.
+Используйте обычные эмодзи. Premium-эмодзи будут заменены автоматически.
+
+После описания бот попросит дату итогов:
+YYYY-MM-DD HH:mm
+Например: 2026-10-01 20:00
+Или отправьте «нет», чтобы подвести итоги вручную.`);
   });
 
   bot.callbackQuery(/^contest_settings:(.+)$/, async (context) => {
