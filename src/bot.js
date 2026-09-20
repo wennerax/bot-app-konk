@@ -451,8 +451,11 @@ MM-DD HH:mm
     if (giveaway.status !== 'active') return context.reply('Конкурс уже завершён.');
     const winners = pickWinners(giveaway);
     await store.saveGiveaway(giveaway);
-    const winnerText = formatWinnerList(giveaway, winners);
-    await bot.api.sendMessage(giveaway.channelId, `🏆 Итоги конкурса «${giveaway.title}»\n\nПобедители:\n${winnerText}`, { parse_mode: 'HTML' });
+    const username = (await bot.api.getMe()).username;
+    await bot.api.sendMessage(giveaway.channelId, formatResultsMessage(giveaway, winners), {
+      parse_mode: 'HTML',
+      reply_markup: resultsKeyboard(username, giveaway.id)
+    });
     for (const winnerId of winners) {
       try {
         await bot.api.sendMessage(winnerId, `🎉 Поздравляем! Вы победили в конкурсе «${giveaway.title}».`);
@@ -460,7 +463,10 @@ MM-DD HH:mm
         console.warn(`Не удалось уведомить победителя ${winnerId}:`, error.message);
       }
     }
-    return context.editMessageText(`🏁 Конкурс завершён. Победителей: ${winners.length}`);
+    const contests = (await store.listGiveaways()).filter((item) => String(item.channelId) === String(giveaway.channelId));
+    return context.editMessageText(`🏁 Конкурс завершён: ${giveaway.title}\n\n🎁 Настройка конкурсов\n\nКонкурсов: ${contests.length}\nВыберите конкурс или создайте новый:`, {
+      reply_markup: contestsMenuKeyboard(giveaway.channelId, contests)
+    });
   });
 
   bot.callbackQuery(/^contest_button:(.+)$/, async (context) => {
