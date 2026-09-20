@@ -1,4 +1,5 @@
-import { Bot, InlineKeyboard } from 'grammy';
+import { Bot, InlineKeyboard, InputFile } from 'grammy';
+import sharp from 'sharp';
 import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from './domain/giveaway.js';
 import { checkRequiredChannels, findAdminChannels } from './services/subscription.js';
 
@@ -240,8 +241,7 @@ export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
       console.log(`Giveaway ${giveaway.id} finished automatically at ${formatMoscowDate(new Date().toISOString())} MSK`);
       try {
         const username = (await bot.api.getMe()).username;
-        await bot.api.sendMessage(giveaway.channelId, formatResultsMessage(giveaway, winners), {
-          parse_mode: 'HTML',
+        await bot.api.sendPhoto(giveaway.channelId, new InputFile(await renderResultsCard(giveaway, winners), 'results.png'), {
           reply_markup: resultsKeyboard(username, giveaway.id)
         });
       } catch (error) {
@@ -452,8 +452,7 @@ MM-DD HH:mm
     const winners = pickWinners(giveaway);
     await store.saveGiveaway(giveaway);
     const username = (await bot.api.getMe()).username;
-    await bot.api.sendMessage(giveaway.channelId, formatResultsMessage(giveaway, winners), {
-      parse_mode: 'HTML',
+    await bot.api.sendPhoto(giveaway.channelId, new InputFile(await renderResultsCard(giveaway, winners), 'results.png'), {
       reply_markup: resultsKeyboard(username, giveaway.id)
     });
     for (const winnerId of winners) {
@@ -848,23 +847,26 @@ function formatWinnerList(giveaway, winners) {
   return winners.length ? winners.map((id, index) => formatWinner(giveaway, id, index + 1)).join('\n') : 'Участников нет.';
 }
 
-function formatResultsMessage(giveaway, winners) {
+async function renderResultsCard(giveaway, winners) {
   const entries = winners.map((userId, index) => {
     const profile = giveaway.participantProfiles?.[String(userId)] ?? {};
     const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || 'Без имени';
     const username = profile.username ? `@${profile.username}` : '—';
     return { place: String(index + 1), name, username };
   });
-  if (!entries.length) return '🎉 <b>Результаты розыгрыша:</b>\n\n🏆 <b>Победителей нет.</b>';
-  const nameWidth = Math.min(18, Math.max(4, ...entries.map(({ name }) => name.length)));
-  const usernameWidth = Math.min(20, Math.max(9, ...entries.map(({ username }) => username.length)));
-  const truncate = (value, width) => value.length > width ? `${value.slice(0, width - 1)}…` : value;
-  const rows = entries.map(({ place, name, username }) => `${place.padStart(5)} | ${truncate(name, nameWidth).padEnd(nameWidth)} | ${truncate(username, usernameWidth)}`);
-  const table = [
-    `Место | ${'Имя'.padEnd(nameWidth)} | ${'Юзернейм'.padEnd(usernameWidth)}`,
-    ...rows
-  ].join('\n');
-  return `🎉 <b>Результаты розыгрыша:</b>\n\n🏆 <b>Победители:</b>\n\n<pre>${escapeHtml(table)}</pre>`;
+  const width = 900;
+  const headerHeight = 190;
+  const rowHeight = 72;
+  const rows = entries.length ? entries : [{ place: '', name: 'Победителей нет', username: '' }];
+  const height = headerHeight + 82 + rows.length * rowHeight + 28;
+  const escapeXml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[character]));
+  const truncate = (value, maxLength) => value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+  const rowMarkup = rows.map(({ place, name, username }, index) => {
+    const y = headerHeight + 82 + index * rowHeight;
+    return `<rect x="24" y="${y}" width="852" height="${rowHeight}" fill="${index % 2 ? '#f8f9fb' : '#ffffff'}"/><line x1="24" y1="${y + rowHeight}" x2="876" y2="${y + rowHeight}" stroke="#d9dde3"/><text x="48" y="${y + 46}" class="cell">${escapeXml(place || '—')}</text><text x="184" y="${y + 46}" class="cell">${escapeXml(truncate(name, 25))}</text><text x="530" y="${y + 46}" class="cell">${escapeXml(truncate(username, 28))}</text>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#ffffff"/><text x="24" y="58" class="title">Результаты розыгрыша:</text><text x="24" y="126" class="subtitle">Победители:</text><rect x="24" y="${headerHeight}" width="852" height="82" rx="16" fill="#f1f3f5" stroke="#d9dde3"/><text x="48" y="${headerHeight + 51}" class="head">Место</text><text x="184" y="${headerHeight + 51}" class="head">Имя</text><text x="530" y="${headerHeight + 51}" class="head">Юзернейм</text><line x1="160" y1="${headerHeight}" x2="160" y2="${height - 28}" stroke="#d9dde3"/><line x1="506" y1="${headerHeight}" x2="506" y2="${height - 28}" stroke="#d9dde3"/>${rowMarkup}<style>.title{font:700 36px Arial,sans-serif;fill:#202124}.subtitle{font:700 30px Arial,sans-serif;fill:#202124}.head{font:700 25px Arial,sans-serif;fill:#202124}.cell{font:24px Arial,sans-serif;fill:#30343b}</style></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 function resultsKeyboard(botUsername, giveawayId) {
