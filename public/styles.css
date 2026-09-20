@@ -88,15 +88,14 @@ body {
 
 body::before {
 	position: fixed;
-	inset: -22vh -18vw;
+	inset: -50%;
 	z-index: -1;
 	content: '';
 	pointer-events: none;
-	opacity: .72;
-	background: radial-gradient(ellipse 24% 46% at var(--beam-x, 78%) var(--beam-y, 18%), rgba(255, 35, 67, .2), transparent 68%);
-	filter: blur(18px);
-	animation: ambient-beam 7s ease-in-out infinite alternate;
-	transform: rotate(-8deg);
+	opacity: .24;
+	background: repeating-linear-gradient(-35deg, transparent 0 34px, rgba(255, 35, 70, .22) 35px 37px, transparent 38px 92px);
+	background-size: 180px 180px;
+	animation: diagonal-grid 12s linear infinite;
 	transition: opacity .35s ease;
 }
 
@@ -106,14 +105,10 @@ body::after {
 	z-index: 20;
 	content: '';
 	pointer-events: none;
-	opacity: .3;
-	background:
-		radial-gradient(ellipse at 16% 22%, rgba(255, 42, 76, .34), transparent 38%),
-		radial-gradient(ellipse at 88% 76%, rgba(136, 0, 31, .38), transparent 42%),
-		linear-gradient(125deg, rgba(255, 23, 68, .08), transparent 48%, rgba(255, 64, 96, .14));
-	background-size: 145% 145%, 135% 135%, 180% 180%;
-	animation: flowing-aurora 14s ease-in-out infinite alternate;
-	transform: translate3d(var(--glass-shift, 0px), 0, 0);
+	opacity: .2;
+	background: linear-gradient(to bottom, transparent 0%, transparent 42%, rgba(255, 36, 70, .42) 50%, transparent 58%, transparent 100%);
+	background-size: 100% 240%;
+	animation: vertical-wave 6s ease-in-out infinite;
 	mix-blend-mode: screen;
 	transition: opacity .3s ease;
 }
@@ -121,27 +116,14 @@ body::after {
 body.is-scrolling::before { opacity: .95; }
 body.is-scrolling::after { opacity: .28; }
 
-@keyframes ambient-beam {
-	0% { opacity: .48; transform: translate3d(-9%, -5%, 0) rotate(-12deg) scale(.9); }
-	50% { opacity: .9; }
-	100% { opacity: .56; transform: translate3d(10%, 7%, 0) rotate(2deg) scale(1.16); }
+@keyframes diagonal-grid {
+	from { background-position: 0 0; }
+	to { background-position: 180px 180px; }
 }
 
-@keyframes ambient-glass {
-	0%, 100% { background-position: -35% 50%; opacity: .12; }
-	50% { background-position: 135% 50%; opacity: .3; }
-}
-
-@keyframes flowing-aurora {
-	0% {
-		background-position: 0% 15%, 100% 85%, 0% 50%;
-		opacity: .18;
-	}
-	50% { opacity: .34; }
-	100% {
-		background-position: 100% 85%, 0% 15%, 100% 50%;
-		opacity: .3;
-	}
+@keyframes vertical-wave {
+	0%, 100% { background-position: 0 -120%; opacity: .08; }
+	50% { background-position: 0 120%; opacity: .26; }
 }
 
 .shell { width: min(100% - 28px, 640px); padding: 28px 0 52px; }
