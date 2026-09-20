@@ -802,7 +802,7 @@ export function selectAndCloseGiveaway(giveaway, random) {
 function contestSettingsKeyboard(giveaway) {
   const keyboard = new InlineKeyboard()
     .text('✏️ Название конкурса', `contest_name:${giveaway.id}`).row()
-    .text('📋 Условия', `contest_conditions:${giveaway.id}`).row()
+    .text('📋 Партнёры', `contest_conditions:${giveaway.id}`).row()
     .text('📝 Описание', `contest_description:${giveaway.id}`).row()
     .text('🎨 Кнопка', `contest_button:${giveaway.id}`).row()
     .text('⏰ Итоги конкурса', `contest_ends:${giveaway.id}`).row()
