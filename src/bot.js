@@ -281,6 +281,12 @@ function channelSettingsKeyboard(channel) {
   return keyboard.text('⬅️ К списку каналов', 'channels_back').row().text('❌ Закрыть', 'channels_close');
 }
 
+function contestsMenuKeyboard(channelId, contests) {
+  const keyboard = new InlineKeyboard().text('➕ Создать конкурс', `contest_create:${channelId}`).row();
+  for (const contest of contests) keyboard.text(`${contest.status === 'draft' ? '📝' : '🎁'} ${contest.title}`, `contest_settings:${contest.id}`).row();
+  return keyboard.text('⬅️ Назад', `channel_settings:${channelId}`);
+}
+
 function colorPaletteKeyboard(channelId) {
   return new InlineKeyboard()
     .text('🔴 Красный', `button_style_set:${channelId}:danger`)
@@ -387,10 +393,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     await context.answerCallbackQuery();
     const channelId = context.match[1];
     const contests = (await store.listGiveaways()).filter((giveaway) => String(giveaway.channelId) === channelId);
-    const keyboard = new InlineKeyboard().text('➕ Создать конкурс', `contest_create:${channelId}`).row();
-    for (const contest of contests) keyboard.text(`${contest.status === 'draft' ? '📝' : '🎁'} ${contest.title}`, `contest_settings:${contest.id}`).row();
-    keyboard.text('⬅️ Назад', `channel_settings:${channelId}`);
-    return context.editMessageText(`🎁 Настройка конкурсов\n\nКонкурсов: ${contests.length}\nВыберите конкурс или создайте новый:`, { reply_markup: keyboard });
+    return context.editMessageText(`🎁 Настройка конкурсов\n\nКонкурсов: ${contests.length}\nВыберите конкурс или создайте новый:`, { reply_markup: contestsMenuKeyboard(channelId, contests) });
   });
 
   bot.callbackQuery(/^contest_create:(.+)$/, async (context) => {
@@ -432,7 +435,10 @@ MM-DD HH:mm
     await store.saveGiveaway(giveaway);
     const username = (await bot.api.getMe()).username;
     await publishGiveaway(bot, giveaway.channelId, giveaway, getParticipationLink(username, giveaway.id), context.from.id);
-    return context.editMessageText(`✅ Конкурс опубликован: ${giveaway.title}`);
+    const contests = (await store.listGiveaways()).filter((item) => String(item.channelId) === String(giveaway.channelId));
+    return context.editMessageText(`✅ Конкурс опубликован: ${giveaway.title}\n\n🎁 Настройка конкурсов\n\nКонкурсов: ${contests.length}\nВыберите конкурс или создайте новый:`, {
+      reply_markup: contestsMenuKeyboard(giveaway.channelId, contests)
+    });
   });
 
   bot.callbackQuery(/^contest_finish:(.+)$/, async (context) => {
