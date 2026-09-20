@@ -6,6 +6,7 @@ const template = document.querySelector('#giveaway-template');
 const userLabel = document.querySelector('#user-label');
 const participation = document.querySelector('#participation');
 const status = document.querySelector('#check-status');
+const resultStatus = document.querySelector('#result-status');
 const dice = document.querySelector('.dice');
 let scrollFrame = null;
 let scrollStopTimer = null;
@@ -100,11 +101,32 @@ function openParticipation(giveaway) {
   telegram?.MainButton?.setParams({ text: 'УЧАСТВОВАТЬ', color: accent, text_color: '#111111' });
   list.hidden = true;
   participation.hidden = false;
+  resultStatus.hidden = true;
+  resultStatus.replaceChildren();
+  if (giveaway.status === 'finished') {
+    showResult(giveaway.viewerResult);
+    return;
+  }
   status.textContent = 'Проверяем условия конкурса';
   document.querySelector('#participate').hidden = true;
   dice.classList.remove('rolling');
   requestAnimationFrame(() => dice.classList.add('rolling'));
   setTimeout(participate, 1150);
+}
+
+function showResult(result) {
+  dice.hidden = true;
+  document.querySelector('#participate').hidden = true;
+  status.hidden = true;
+  resultStatus.hidden = false;
+  resultStatus.className = `result-status ${result?.won ? 'is-winner' : ''}`;
+  if (result?.won) {
+    resultStatus.innerHTML = `<strong>Ты победил!</strong><span>Место в списке: ${result.place}</span>`;
+  } else if (result?.participated) {
+    resultStatus.innerHTML = '<strong>В этот раз без победы</strong><span>Спасибо за участие. Следи за новыми конкурсами.</span>';
+  } else {
+    resultStatus.innerHTML = '<strong>Ты не участвовал</strong><span>Этот конкурс уже завершён.</span>';
+  }
 }
 
 async function participate() {
@@ -135,13 +157,18 @@ async function participate() {
 }
 
 document.querySelector('#participate').addEventListener('click', participate);
-document.querySelector('#back').addEventListener('click', () => { participation.hidden = true; list.hidden = false; });
+document.querySelector('#back').addEventListener('click', () => {
+  participation.hidden = true;
+  list.hidden = false;
+  dice.hidden = false;
+  status.hidden = false;
+});
 
 async function load() {
   userLabel.textContent = telegram?.initDataUnsafe?.user?.first_name ?? 'Гость Telegram';
   const headers = { 'x-telegram-init-data': telegram?.initData ?? '' };
   const response = selectedId
-    ? await fetch(`/api/giveaways/${encodeURIComponent(selectedId)}`)
+    ? await fetch(`/api/giveaways/${encodeURIComponent(selectedId)}`, { headers })
     : telegram?.initData
       ? await fetch('/api/my-participations', { headers })
       : null;

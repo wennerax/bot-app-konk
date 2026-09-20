@@ -39,7 +39,16 @@ export function buildServer({ bot, store, botToken } = {}) {
   app.get('/api/giveaways/:id', async (request, reply) => {
     const giveaway = await giveawayStore.getGiveaway(request.params.id);
     if (!giveaway || giveaway.status === 'draft') return reply.code(404).send({ error: 'Конкурс не опубликован' });
-    return giveaway;
+    const user = botToken ? validateWebAppInitData(request.headers['x-telegram-init-data'], botToken) : null;
+    const userId = user ? String(user.id) : null;
+    const winners = Array.isArray(giveaway.winners) ? giveaway.winners : [];
+    const winnerIndex = userId ? winners.findIndex((winnerId) => String(winnerId) === userId) : -1;
+    return {
+      ...giveaway,
+      viewerResult: giveaway.status === 'finished' && userId
+        ? { participated: giveaway.participants.includes(userId), won: winnerIndex >= 0, place: winnerIndex >= 0 ? winnerIndex + 1 : null }
+        : null
+    };
   });
   app.get('/api/media/:fileId', async (request, reply) => {
     if (!bot || !botToken) return reply.code(503).send({ error: 'Telegram bot не настроен' });

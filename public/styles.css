@@ -171,6 +171,10 @@ body.is-scrolling::after { opacity: .28; }
 .participation { margin-top: 28px; padding: 36px 20px 30px; border: 1px solid var(--line); border-radius: 10px; background: linear-gradient(145deg, #1b0b10, #0e080a); color: var(--ink); box-shadow: 0 14px 38px rgba(0, 0, 0, .35), 0 0 28px rgba(255, 23, 68, .1); }
 .dice { filter: drop-shadow(0 0 13px rgba(255, 23, 68, .38)); }
 .participation p { color: var(--ink); }
+.result-status { display: grid; gap: 8px; margin: 12px 0 24px; padding: 22px 18px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 23, 68, .08); color: var(--ink); }
+.result-status strong { font-size: 24px; }
+.result-status span { color: var(--muted); }
+.result-status.is-winner { border-color: rgba(255, 23, 68, .7); background: rgba(255, 23, 68, .16); box-shadow: 0 0 24px rgba(255, 23, 68, .14); }
 .participation a { color: #ff6479; }
 .secondary { color: #a98d92; }
 .secondary:hover { color: var(--ink); }
