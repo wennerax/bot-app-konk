@@ -238,9 +238,12 @@ export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
       const winners = pickWinners(giveaway);
       await store.saveGiveaway(giveaway);
       console.log(`Giveaway ${giveaway.id} finished automatically at ${formatMoscowDate(new Date().toISOString())} MSK`);
-      const winnerText = formatWinnerList(giveaway, winners);
       try {
-        await bot.api.sendMessage(giveaway.channelId, `🏆 Итоги конкурса «${giveaway.title}»\n\nПобедители:\n${winnerText}`, { parse_mode: 'HTML' });
+        const username = (await bot.api.getMe()).username;
+        await bot.api.sendMessage(giveaway.channelId, formatResultsMessage(giveaway, winners), {
+          parse_mode: 'HTML',
+          reply_markup: resultsKeyboard(username, giveaway.id)
+        });
       } catch (error) {
         console.error(`Не удалось опубликовать итоги ${giveaway.id}:`, error.message);
       }
@@ -837,4 +840,27 @@ function formatWinner(giveaway, userId, place) {
 
 function formatWinnerList(giveaway, winners) {
   return winners.length ? winners.map((id, index) => formatWinner(giveaway, id, index + 1)).join('\n') : 'Участников нет.';
+}
+
+function formatResultsMessage(giveaway, winners) {
+  const entries = winners.map((userId, index) => {
+    const profile = giveaway.participantProfiles?.[String(userId)] ?? {};
+    const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || 'Без имени';
+    const username = profile.username ? `@${profile.username}` : '—';
+    return { place: String(index + 1), name, username };
+  });
+  if (!entries.length) return '🎉 <b>Результаты розыгрыша:</b>\n\n🏆 <b>Победителей нет.</b>';
+  const nameWidth = Math.min(18, Math.max(4, ...entries.map(({ name }) => name.length)));
+  const usernameWidth = Math.min(20, Math.max(9, ...entries.map(({ username }) => username.length)));
+  const truncate = (value, width) => value.length > width ? `${value.slice(0, width - 1)}…` : value;
+  const rows = entries.map(({ place, name, username }) => `${place.padStart(5)} | ${truncate(name, nameWidth).padEnd(nameWidth)} | ${truncate(username, usernameWidth)}`);
+  const table = [
+    `Место | ${'Имя'.padEnd(nameWidth)} | ${'Юзернейм'.padEnd(usernameWidth)}`,
+    ...rows
+  ].join('\n');
+  return `🎉 <b>Результаты розыгрыша:</b>\n\n🏆 <b>Победители:</b>\n\n<pre>${escapeHtml(table)}</pre>`;
+}
+
+function resultsKeyboard(botUsername, giveawayId) {
+  return new InlineKeyboard().url('✅ Проверить результаты', getParticipationLink(botUsername, giveawayId));
 }
