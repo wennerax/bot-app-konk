@@ -161,11 +161,11 @@ export function parseGiveawayInput(text, entities = []) {
   return { title, winnersText, description, entities: mappedEntities };
 }
 
-function parseDateInput(value) {
-  const match = /^(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value);
+export function parseDateInput(value, now = new Date()) {
+  const match = /^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$/.exec(String(value).trim());
   if (!match) return null;
   const [, monthText, dayText, hourText, minuteText] = match;
-  const year = new Date().getFullYear();
+  const year = now.getFullYear();
   const month = Number(monthText);
   const day = Number(dayText);
   const hour = Number(hourText);
@@ -664,7 +664,10 @@ MM-DD HH:mm
         }
         if (action.type === 'contest_ends') {
           giveaway.endsAt = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
-          if (context.msg.text.trim().toLowerCase() !== 'нет' && !giveaway.endsAt) return context.reply('Неверная дата. Формат: MM-DD HH:mm, например 10-01 20:00');
+          if (context.msg.text.trim().toLowerCase() !== 'нет' && !giveaway.endsAt) {
+            pendingActions.set(String(context.from.id), action);
+            return context.reply('Неверная дата. Формат: MM-DD HH:mm, например 10-01 20:00');
+          }
         }
         if (action.type === 'contest_conditions') {
           const references = context.msg.text.trim().toLowerCase() === 'нет' ? [] : context.msg.text.split(',').map((item) => item.trim()).filter(Boolean);
@@ -690,7 +693,10 @@ MM-DD HH:mm
     }
     if (action.type === 'create_confirm') {
       const endsAt = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
-      if (context.msg.text.trim().toLowerCase() !== 'нет' && !endsAt) return context.reply('Неверная дата. Используйте формат: MM-DD HH:mm, например 10-01 20:00, или отправьте «нет».');
+      if (context.msg.text.trim().toLowerCase() !== 'нет' && !endsAt) {
+        pendingActions.set(String(context.from.id), action);
+        return context.reply('Неверная дата. Используйте формат: MM-DD HH:mm, например 10-01 20:00, или отправьте «нет».');
+      }
       try {
         const giveaway = createGiveaway({ ...action.draft, endsAt, status: 'draft' });
         await store.saveGiveaway(giveaway);
@@ -701,7 +707,10 @@ MM-DD HH:mm
     }
     if (action.type === 'ends_at') {
       const value = context.msg.text.trim().toLowerCase() === 'нет' ? null : parseDateInput(context.msg.text.trim());
-      if (context.msg.text.trim().toLowerCase() !== 'нет' && !value) return context.reply('Неверная дата. Используйте формат: MM-DD HH:mm, например 10-01 20:00');
+      if (context.msg.text.trim().toLowerCase() !== 'нет' && !value) {
+        pendingActions.set(String(context.from.id), action);
+        return context.reply('Неверная дата. Используйте формат: MM-DD HH:mm, например 10-01 20:00');
+      }
       const channel = await store.getChannel(action.channelId) ?? { id: action.channelId, title: action.channelId };
       await store.saveChannel({ ...channel, defaultEndsAt: value });
       return context.reply(value ? `Дата итогов по Москве сохранена: ${formatMoscowDate(value)}` : 'Автоматическая дата итогов отключена.');

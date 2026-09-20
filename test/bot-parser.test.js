@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseGiveawayInput, publishGiveaway } from '../src/bot.js';
+import { parseDateInput, parseGiveawayInput, publishGiveaway } from '../src/bot.js';
+
+test('accepts the configured date format for giveaway results', () => {
+  const result = parseDateInput('09-21 00:00', new Date('2026-09-20T12:00:00Z'));
+  assert.equal(result, '2026-09-20T21:00:00.000Z');
+});
 
 test('pipe-delimited giveaway text keeps UTF-16 entity positions', () => {
   const text = 'Название 🎁 | 2 | Подпишись на канал 🪩';
