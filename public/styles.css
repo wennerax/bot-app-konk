@@ -106,10 +106,13 @@ body::after {
 	z-index: 20;
 	content: '';
 	pointer-events: none;
-	opacity: .34;
-	background: linear-gradient(112deg, transparent 24%, rgba(255, 92, 116, 0) 36%, rgba(255, 52, 83, .5) 45%, rgba(255, 190, 198, .18) 49%, rgba(255, 23, 68, 0) 59%, transparent 72%);
-	background-size: 300% 100%;
-	animation: neon-sweep 5s linear infinite;
+	opacity: .3;
+	background:
+		radial-gradient(ellipse at 16% 22%, rgba(255, 42, 76, .34), transparent 38%),
+		radial-gradient(ellipse at 88% 76%, rgba(136, 0, 31, .38), transparent 42%),
+		linear-gradient(125deg, rgba(255, 23, 68, .08), transparent 48%, rgba(255, 64, 96, .14));
+	background-size: 145% 145%, 135% 135%, 180% 180%;
+	animation: flowing-aurora 14s ease-in-out infinite alternate;
 	transform: translate3d(var(--glass-shift, 0px), 0, 0);
 	mix-blend-mode: screen;
 	transition: opacity .3s ease;
@@ -129,10 +132,16 @@ body.is-scrolling::after { opacity: .28; }
 	50% { background-position: 135% 50%; opacity: .3; }
 }
 
-@keyframes neon-sweep {
-	0% { background-position: 125% 0; opacity: .05; }
-	18% { opacity: .38; }
-	42%, 100% { background-position: -125% 0; opacity: .05; }
+@keyframes flowing-aurora {
+	0% {
+		background-position: 0% 15%, 100% 85%, 0% 50%;
+		opacity: .18;
+	}
+	50% { opacity: .34; }
+	100% {
+		background-position: 100% 85%, 0% 15%, 100% 50%;
+		opacity: .3;
+	}
 }
 
 .shell { width: min(100% - 28px, 640px); padding: 28px 0 52px; }
