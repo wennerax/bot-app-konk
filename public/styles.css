@@ -126,7 +126,27 @@ body.is-scrolling::after { opacity: .28; }
 	50% { background-position: 0 120%; opacity: .26; }
 }
 
+@keyframes cover-float {
+	0%, 100% { transform: perspective(700px) rotateY(-2deg) translateY(0); }
+	50% { transform: perspective(700px) rotateY(2deg) translateY(-8px); }
+}
+
+@keyframes cover-zoom {
+	0% { transform: scale(1); }
+	100% { transform: scale(1.07); }
+}
+
+@keyframes cover-glint {
+	0%, 35% { transform: rotate(26deg) translateX(-220%); opacity: 0; }
+	52% { opacity: .8; }
+	70%, 100% { transform: rotate(26deg) translateX(220%); opacity: 0; }
+}
+
 .shell { width: min(100% - 28px, 640px); padding: 28px 0 52px; }
+.cover-art { position: relative; width: min(100%, 270px); aspect-ratio: 1; margin: 0 auto 30px; overflow: hidden; border: 1px solid #54222a; border-radius: 16px; background: #10090b; box-shadow: 0 18px 46px rgba(0, 0, 0, .45), 0 0 34px rgba(255, 23, 68, .14); animation: cover-float 8s ease-in-out infinite; }
+.cover-art::after { position: absolute; inset: 0; content: ''; background: linear-gradient(115deg, rgba(255, 255, 255, .16), transparent 25%, transparent 63%, rgba(255, 23, 68, .2)); mix-blend-mode: screen; pointer-events: none; }
+.cover-art img { width: 100%; height: 100%; display: block; object-fit: cover; animation: cover-zoom 12s ease-in-out infinite alternate; }
+.cover-glint { position: absolute; inset: -30% 38%; background: rgba(255, 226, 230, .28); filter: blur(14px); transform: rotate(26deg) translateX(-220%); animation: cover-glint 6s ease-in-out infinite; pointer-events: none; }
 .hero { border-bottom-color: var(--line); padding: 12px 0 28px; }
 .eyebrow, .meta { color: #ff6479; }
 .eyebrow { letter-spacing: .12em; }
@@ -159,10 +179,11 @@ body.is-scrolling::after { opacity: .28; }
 	.shell { width: min(100% - 22px, 640px); padding-top: 18px; }
 	.hero h1 { font-size: 43px; }
 	.giveaway { padding: 15px; }
+	.cover-art { width: min(100%, 230px); margin-bottom: 24px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-	body::before, body::after { animation: none; transition: none; }
+	body::before, body::after, .cover-art, .cover-art img, .cover-glint { animation: none; transition: none; }
 }
 
 .meta { white-space: pre-line; }
