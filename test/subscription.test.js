@@ -13,7 +13,7 @@ test('checks the contest channel before partner channels', async () => {
     { id: '-1002', title: 'Партнёр' }
   ]);
 
-  assert.deepEqual(checked, ['-1001']);
+  assert.deepEqual(checked, ['-1001', '-1002']);
   assert.equal(result.passed, false);
-  assert.equal(result.channels[0].id, '-1001');
+  assert.deepEqual(result.channels.map((channel) => channel.id), ['-1001', '-1002']);
 });

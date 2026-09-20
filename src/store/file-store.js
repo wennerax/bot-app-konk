@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ensurePrimaryChannel } from '../domain/giveaway.js';
+import { addParticipant } from '../domain/giveaway.js';
 
 const emptyData = () => ({ channels: {}, giveaways: {} });
 
@@ -53,6 +54,14 @@ export class FileStore {
 
   async getGiveaway(id) {
     return this.data.giveaways[id] ? structuredClone(this.data.giveaways[id]) : null;
+  }
+
+  async addParticipant(id, userId, profile) {
+    const giveaway = this.data.giveaways[id];
+    if (!giveaway) return { added: false, reason: 'not_found' };
+    const result = addParticipant(giveaway, userId, profile);
+    if (result.added) await this.persist();
+    return result;
   }
 
   async deleteGiveaway(id) {

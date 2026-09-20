@@ -75,7 +75,13 @@ let selectedGiveaway = null;
 
 function render(giveaways) {
   list.replaceChildren();
-  if (!giveaways.length) { list.innerHTML = '<p class="empty">Сейчас активных конкурсов нет.</p>'; return; }
+  if (!giveaways.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = 'Сейчас активных конкурсов нет.';
+    list.replaceChildren(empty);
+    return;
+  }
   giveaways.forEach((giveaway, index) => {
     const fragment = template.content.cloneNode(true);
     fragment.querySelector('.number').textContent = String(index + 1).padStart(2, '0');
@@ -121,11 +127,23 @@ function showResult(result) {
   resultStatus.hidden = false;
   resultStatus.className = `result-status ${result?.won ? 'is-winner' : ''}`;
   if (result?.won) {
-    resultStatus.innerHTML = `<strong>Ты победил!</strong><span>Место в списке: ${result.place}</span>`;
+    const title = document.createElement('strong');
+    title.textContent = 'Ты победил!';
+    const place = document.createElement('span');
+    place.textContent = `Место в списке: ${result.place}`;
+    resultStatus.replaceChildren(title, place);
   } else if (result?.participated) {
-    resultStatus.innerHTML = '<strong>В этот раз без победы</strong><span>Спасибо за участие. Следи за новыми конкурсами.</span>';
+    const title = document.createElement('strong');
+    title.textContent = 'В этот раз без победы';
+    const message = document.createElement('span');
+    message.textContent = 'Спасибо за участие. Следи за новыми конкурсами.';
+    resultStatus.replaceChildren(title, message);
   } else {
-    resultStatus.innerHTML = '<strong>Ты не участвовал</strong><span>Этот конкурс уже завершён.</span>';
+    const title = document.createElement('strong');
+    title.textContent = 'Ты не участвовал';
+    const message = document.createElement('span');
+    message.textContent = 'Этот конкурс уже завершён.';
+    resultStatus.replaceChildren(title, message);
   }
 }
 
@@ -144,9 +162,24 @@ async function participate() {
     const missing = result.missingChannels ?? [];
     status.textContent = result.error || 'Условия не выполнены';
     if (missing.length) {
-      status.innerHTML = `${result.error}<br>${missing.map((channel) => channel.url
-        ? `<a href="${channel.url}" target="_blank">Подписаться: ${channel.title}</a>`
-        : `<span>${channel.title}: ${channel.error || 'нужен ID канала'}</span>`).join('<br>')}`;
+      const message = document.createElement('span');
+      message.textContent = result.error;
+      status.replaceChildren(message);
+      for (const channel of missing) {
+        status.append(document.createElement('br'));
+        if (channel.url) {
+          const link = document.createElement('a');
+          link.href = channel.url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = `Подписаться: ${channel.title}`;
+          status.append(link);
+        } else {
+          const detail = document.createElement('span');
+          detail.textContent = `${channel.title}: ${channel.error || 'нужен ID канала'}`;
+          status.append(detail);
+        }
+      }
     }
     telegram?.showAlert(result.error || 'Подпишись на все обязательные каналы и повтори проверку.');
     document.querySelector('#participate').hidden = false;
@@ -173,17 +206,28 @@ async function load() {
       ? await fetch('/api/my-participations', { headers })
       : null;
   if (!response) {
-    list.innerHTML = '<p class="empty">Открой Mini App из Telegram, чтобы увидеть свои участия.</p>';
+    const message = document.createElement('p');
+    message.className = 'empty';
+    message.textContent = 'Открой Mini App из Telegram, чтобы увидеть свои участия.';
+    list.replaceChildren(message);
     return;
   }
   const payload = await response.json();
   if (!response.ok) {
-    list.innerHTML = `<p class="empty">${payload.error || `Не удалось загрузить конкурсы (${response.status})`}</p>`;
+    const message = document.createElement('p');
+    message.className = 'empty';
+    message.textContent = payload.error || `Не удалось загрузить конкурсы (${response.status})`;
+    list.replaceChildren(message);
     return;
   }
   const giveaways = Array.isArray(payload) ? payload : [payload];
   render(giveaways);
-  if (!selectedId && !giveaways.length) list.innerHTML = '<p class="empty">Ты пока не участвуешь ни в одном конкурсе.</p>';
+  if (!selectedId && !giveaways.length) {
+    const message = document.createElement('p');
+    message.className = 'empty';
+    message.textContent = 'Ты пока не участвуешь ни в одном конкурсе.';
+    list.replaceChildren(message);
+  }
   if (selectedId) {
     const giveaway = giveaways.find((item) => item.id === selectedId);
     if (giveaway) openParticipation(giveaway);
@@ -192,5 +236,8 @@ async function load() {
 
 document.querySelector('#refresh').addEventListener('click', load);
 load().catch((error) => {
-  list.innerHTML = `<p class="empty">Не удалось загрузить конкурсы.<br><small>${error.message || 'Проверьте подключение к серверу.'}</small></p>`;
+  const message = document.createElement('p');
+  message.className = 'empty';
+  message.textContent = `Не удалось загрузить конкурсы. ${error.message || 'Проверьте подключение к серверу.'}`;
+  list.replaceChildren(message);
 });

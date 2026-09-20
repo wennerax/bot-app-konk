@@ -11,7 +11,7 @@ import { validateWebAppInitData } from './services/telegram-auth.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-export function buildServer({ bot, store, botToken } = {}) {
+export function buildServer({ bot, store, botToken, webhookSecret } = {}) {
   const app = Fastify({ logger: true });
   const giveawayStore = store ?? new MemoryStore();
   app.register(fastifyStatic, { root: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public') });
@@ -52,15 +52,27 @@ export function buildServer({ bot, store, botToken } = {}) {
   });
   app.get('/api/media/:fileId', async (request, reply) => {
     if (!bot || !botToken) return reply.code(503).send({ error: 'Telegram bot не настроен' });
-    const file = await bot.api.getFile(request.params.fileId);
+    const fileId = request.params.fileId;
+    const giveaways = await giveawayStore.listGiveaways();
+    const isPublishedMedia = giveaways.some((giveaway) => giveaway.status !== 'draft' && giveaway.media?.fileId === fileId);
+    if (!isPublishedMedia) return reply.code(404).send({ error: 'Медиа не найдено' });
+    const file = await bot.api.getFile(fileId);
     const mediaResponse = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`);
     if (!mediaResponse.ok) return reply.code(404).send({ error: 'Медиа не найдено' });
     reply.type(mediaResponse.headers.get('content-type') ?? 'application/octet-stream');
     return Buffer.from(await mediaResponse.arrayBuffer());
   });
   app.post('/api/giveaways', async (request, reply) => {
+    if (!bot || !botToken) return reply.code(503).send({ error: 'Telegram bot не настроен' });
+    const user = validateWebAppInitData(request.headers['x-telegram-init-data'], botToken);
+    if (!user) return reply.code(401).send({ error: 'Недействительные данные Telegram' });
     try {
-      const giveaway = createGiveaway(request.body ?? {});
+      const input = request.body ?? {};
+      const moderator = await bot.api.getChatMember(input.channelId, user.id);
+      if (!['creator', 'administrator'].includes(moderator.status)) {
+        return reply.code(403).send({ error: 'Создавать конкурсы может только администратор канала' });
+      }
+      const giveaway = createGiveaway(input);
       await giveawayStore.saveGiveaway(giveaway);
       return reply.code(201).send(giveaway);
     } catch (error) {
@@ -76,13 +88,18 @@ export function buildServer({ bot, store, botToken } = {}) {
     giveaway.requiredChannels = ensurePrimaryChannel(giveaway.channelId, giveaway.requiredChannels);
     const check = await checkRequiredChannels(bot, user.id, giveaway.requiredChannels);
     if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels, missingChannels: check.channels.filter((channel) => !channel.isMember) });
-    const result = addParticipant(giveaway, user.id, user);
-    await giveawayStore.saveGiveaway(giveaway);
+    const result = giveawayStore.addParticipant
+      ? await giveawayStore.addParticipant(giveaway.id, user.id, user)
+      : addParticipant(giveaway, user.id, user);
+    if (!giveawayStore.addParticipant) await giveawayStore.saveGiveaway(giveaway);
     return { ...result, giveawayId: giveaway.id };
   });
   if (bot) {
     app.get('/telegram/webhook', async () => ({ ok: true, message: 'Telegram webhook endpoint is ready' }));
     app.post('/telegram/webhook', async (request, reply) => {
+      if (!webhookSecret || request.headers['x-telegram-bot-api-secret-token'] !== webhookSecret) {
+        return reply.code(401).send({ ok: false, error: 'Invalid webhook secret' });
+      }
       console.log(`Telegram webhook POST received: ${request.body?.update_id ?? 'unknown'}`);
       await bot.handleUpdate(request.body);
       return reply.send({ ok: true });
@@ -97,7 +114,7 @@ if (isDirectRun) {
   const store = await new FileStore(config.dataFile).init();
   console.log(`File database: ${config.dataFile}`);
   const bot = config.botToken ? createBot({ token: config.botToken, store, publicUrl: config.publicUrl, miniAppName: process.env.MINI_APP_NAME, managedChannels: config.managedChannels }) : null;
-  const app = buildServer({ bot, store, botToken: config.botToken });
+  const app = buildServer({ bot, store, botToken: config.botToken, webhookSecret: config.webhookSecret });
   if (bot) await bot.init();
   if (bot) startGiveawayScheduler({ bot, store });
   await app.listen({ port: config.port, host: '0.0.0.0' });

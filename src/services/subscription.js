@@ -6,7 +6,6 @@ export async function checkRequiredChannels(bot, userId, channels) {
       const isMember = ['creator', 'administrator', 'member'].includes(member.status)
         || (member.status === 'restricted' && member.is_member);
       results.push({ ...channel, isMember, status: member.status });
-      if (!isMember) break;
     } catch (error) {
       results.push({ ...channel, isMember: false, status: 'unknown', error: error.description ?? 'Бот не может проверить этот канал' });
       break;

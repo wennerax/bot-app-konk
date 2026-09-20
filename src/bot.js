@@ -35,6 +35,8 @@ function replaceCustomEmojiWithFallback(text = '', entities = []) {
     const charStart = utf16IndexToStringIndex(text, start);
     const charEnd = utf16IndexToStringIndex(text, end);
     if (charStart < 0 || charEnd <= charStart || charStart < cursor) continue;
+    const source = characters.slice(charStart, charEnd).join('');
+    if (!/\p{Extended_Pictographic}/u.test(source)) continue;
     parts.push(characters.slice(cursor, charStart).join(''));
     parts.push(fallbackEmojiForEntity(entity, parts.length));
     cursor = charEnd;
@@ -232,8 +234,12 @@ function normalizeChannelReference(value) {
 }
 
 export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
+  let processing = false;
   const processDueGiveaways = async () => {
-    for (const giveaway of await store.listGiveaways()) {
+    if (processing) return;
+    processing = true;
+    try {
+      for (const giveaway of await store.listGiveaways()) {
       if (giveaway.status !== 'active' || !giveaway.endsAt || new Date(giveaway.endsAt).getTime() > Date.now()) continue;
       const winners = pickWinners(giveaway);
       await store.saveGiveaway(giveaway);
@@ -251,6 +257,9 @@ export function startGiveawayScheduler({ bot, store, intervalMs = 15000 }) {
           console.warn(`Не удалось отправить уведомление победителю ${winnerId}:`, error.message);
         }
       }
+      }
+    } finally {
+      processing = false;
     }
   };
   const timer = setInterval(() => processDueGiveaways().catch((error) => console.error('Ошибка планировщика конкурсов:', error)), intervalMs);
@@ -309,6 +318,30 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     await next();
   });
 
+  bot.on('callback_query:data', async (context, next) => {
+    const data = context.callbackQuery.data ?? '';
+    if (!data.startsWith('contest_')) return next();
+    const reference = data.split(':')[1];
+    const giveaway = data.startsWith('contest_create:') ? null : await store.getGiveaway(reference);
+    const channelId = giveaway?.channelId ?? reference;
+    if (!channelId) {
+      await context.answerCallbackQuery('Конкурс не найден.');
+      return;
+    }
+    let moderator;
+    try {
+      moderator = await bot.api.getChatMember(channelId, context.from.id);
+    } catch {
+      await context.answerCallbackQuery('Не удалось проверить права.');
+      return;
+    }
+    if (!['creator', 'administrator'].includes(moderator.status)) {
+      await context.answerCallbackQuery('Нужны права администратора канала.');
+      return;
+    }
+    await next();
+  });
+
   for (const channel of managedChannels) {
     store.saveChannel(channel).catch((error) => console.error('Не удалось сохранить канал:', error.message));
   }
@@ -335,6 +368,8 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 
   bot.api.setMyCommands([
     { command: 'start', description: 'Открыть конкурс' },
+    { command: 'help', description: 'Помощь по боту' },
+    { command: 'settings', description: 'Настройки' },
     { command: 'menu', description: 'Мои каналы' },
     { command: 'newgiveaway', description: 'Создать конкурс' }
   ]).catch((error) => console.error('Не удалось установить команды:', error.message));
@@ -353,10 +388,20 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
       keyboard.text('Проверить подписку', `check_${giveaway.id}`);
       return context.reply('Сначала подпишись на обязательные каналы, затем нажми проверку.', { reply_markup: keyboard });
     }
-    const result = addParticipant(giveaway, context.from.id, context.from);
-    await store.saveGiveaway(giveaway);
+    const result = store.addParticipant
+      ? await store.addParticipant(giveaway.id, context.from.id, context.from)
+      : addParticipant(giveaway, context.from.id, context.from);
+    if (!store.addParticipant) await store.saveGiveaway(giveaway);
     return context.reply(result.added ? 'Готово, ты участвуешь в конкурсе!' : 'Ты уже участвуешь в этом конкурсе.');
   });
+
+  bot.command('help', async (context) => context.reply(
+    'Этот бот помогает создавать розыгрыши в Telegram-каналах.\n\n' +
+    '/menu - открыть каналы и конкурсы\n' +
+    '/newgiveaway - создать конкурс\n' +
+    '/settings - открыть настройки\n\n' +
+    'Для управления каналом бот должен быть его администратором.'
+  ));
 
   bot.callbackQuery(/^check_(.+)$/, async (context) => {
     await context.answerCallbackQuery();
@@ -364,8 +409,10 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
     if (!giveaway) return context.reply('Конкурс больше не найден.');
     const check = await checkRequiredChannels(bot, context.from.id, giveaway.requiredChannels);
     if (!check.passed) return context.reply('Подписка пока не подтверждена.');
-    const result = addParticipant(giveaway, context.from.id, context.from);
-    await store.saveGiveaway(giveaway);
+    const result = store.addParticipant
+      ? await store.addParticipant(giveaway.id, context.from.id, context.from)
+      : addParticipant(giveaway, context.from.id, context.from);
+    if (!store.addParticipant) await store.saveGiveaway(giveaway);
     return context.reply(result.added ? 'Подписка подтверждена, ты участвуешь!' : 'Ты уже участвуешь.');
   });
 
@@ -377,6 +424,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
   };
 
   bot.command('menu', showMenu);
+  bot.command('settings', showMenu);
   bot.hears('ℹ️ Меню', showMenu);
 
   bot.callbackQuery(/^channel_settings:(.+)$/, async (context) => {

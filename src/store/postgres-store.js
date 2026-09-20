@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS channels (
   url TEXT,
   required_channels JSONB NOT NULL DEFAULT '[]'::jsonb,
   mini_app_button_color TEXT NOT NULL DEFAULT '#e6ff54',
+  button_style TEXT NOT NULL DEFAULT 'primary',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -46,7 +47,8 @@ function mapChannel(row) {
     username: row.username,
     url: row.url,
     requiredChannels: row.required_channels,
-    miniAppButtonColor: row.mini_app_button_color
+    miniAppButtonColor: row.mini_app_button_color,
+    buttonStyle: row.button_style ?? 'primary'
   };
 }
 
@@ -59,6 +61,7 @@ function mapGiveaway(row, participantRows) {
     channelId: row.channel_id,
     requiredChannels: row.required_channels,
     miniAppButtonColor: row.mini_app_button_color,
+    buttonStyle: row.button_style ?? 'primary',
     media: row.media,
     entities: row.entities,
     winnersCount: row.winners_count,
@@ -75,6 +78,8 @@ export async function createPostgresStore(databaseUrl) {
   const pool = new Pool({ connectionString: databaseUrl, max: 5, ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false } });
   await pool.query(schema);
   await pool.query("ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS participant_profiles JSONB NOT NULL DEFAULT '{}'::jsonb");
+  await pool.query("ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS button_style TEXT NOT NULL DEFAULT 'primary'");
+  await pool.query("ALTER TABLE channels ADD COLUMN IF NOT EXISTS button_style TEXT NOT NULL DEFAULT 'primary'");
 
   async function loadGiveaway(id) {
     const result = await pool.query('SELECT * FROM giveaways WHERE id = $1', [id]);
@@ -86,15 +91,50 @@ export async function createPostgresStore(databaseUrl) {
   return {
     async saveGiveaway(giveaway) {
       await pool.query(`
-        INSERT INTO giveaways (id, title, description, source_text, channel_id, required_channels, mini_app_button_color, media, entities, winners_count, status, winners, participant_profiles, created_at, ends_at)
-        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9::jsonb,$10,$11,$12::jsonb,$13::jsonb,$14,$15)
-        ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, description=EXCLUDED.description, source_text=EXCLUDED.source_text, channel_id=EXCLUDED.channel_id, required_channels=EXCLUDED.required_channels, mini_app_button_color=EXCLUDED.mini_app_button_color, media=EXCLUDED.media, entities=EXCLUDED.entities, winners_count=EXCLUDED.winners_count, status=EXCLUDED.status, winners=EXCLUDED.winners, participant_profiles=EXCLUDED.participant_profiles, ends_at=EXCLUDED.ends_at
-      `, [giveaway.id, giveaway.title, giveaway.description, giveaway.sourceText ?? '', giveaway.channelId, JSON.stringify(giveaway.requiredChannels), giveaway.miniAppButtonColor, JSON.stringify(giveaway.media), JSON.stringify(giveaway.entities), giveaway.winnersCount, giveaway.status, JSON.stringify(giveaway.winners), JSON.stringify(giveaway.participantProfiles ?? {}), giveaway.createdAt, giveaway.endsAt]);
+        INSERT INTO giveaways (id, title, description, source_text, channel_id, required_channels, mini_app_button_color, button_style, media, entities, winners_count, status, winners, participant_profiles, created_at, ends_at)
+        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13::jsonb,$14::jsonb,$15,$16)
+        ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, description=EXCLUDED.description, source_text=EXCLUDED.source_text, channel_id=EXCLUDED.channel_id, required_channels=EXCLUDED.required_channels, mini_app_button_color=EXCLUDED.mini_app_button_color, button_style=EXCLUDED.button_style, media=EXCLUDED.media, entities=EXCLUDED.entities, winners_count=EXCLUDED.winners_count, status=EXCLUDED.status, winners=EXCLUDED.winners, participant_profiles=EXCLUDED.participant_profiles, ends_at=EXCLUDED.ends_at
+      `, [giveaway.id, giveaway.title, giveaway.description, giveaway.sourceText ?? '', giveaway.channelId, JSON.stringify(giveaway.requiredChannels), giveaway.miniAppButtonColor, giveaway.buttonStyle ?? 'primary', JSON.stringify(giveaway.media), JSON.stringify(giveaway.entities), giveaway.winnersCount, giveaway.status, JSON.stringify(giveaway.winners), JSON.stringify(giveaway.participantProfiles ?? {}), giveaway.createdAt, giveaway.endsAt]);
       await pool.query('DELETE FROM participants WHERE giveaway_id = $1', [giveaway.id]);
       if (giveaway.participants.length) {
         await pool.query(`INSERT INTO participants (giveaway_id, user_id) SELECT $1, UNNEST($2::text[]) ON CONFLICT DO NOTHING`, [giveaway.id, giveaway.participants]);
       }
       return giveaway;
+    },
+    async addParticipant(id, userId, profile) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const giveawayResult = await client.query('SELECT status FROM giveaways WHERE id = $1 FOR UPDATE', [id]);
+        if (!giveawayResult.rows[0]) {
+          await client.query('ROLLBACK');
+          return { added: false, reason: 'not_found' };
+        }
+        if (giveawayResult.rows[0].status !== 'active') {
+          await client.query('ROLLBACK');
+          return { added: false, reason: 'closed' };
+        }
+        const participantResult = await client.query(
+          'INSERT INTO participants (giveaway_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING user_id',
+          [id, String(userId)]
+        );
+        if (!participantResult.rowCount) return { added: false, reason: 'already_joined' };
+        await client.query(
+          'UPDATE giveaways SET participant_profiles = participant_profiles || $2::jsonb WHERE id = $1',
+          [id, JSON.stringify({ [String(userId)]: {
+            username: profile?.username ?? null,
+            firstName: profile?.first_name ?? profile?.firstName ?? null,
+            lastName: profile?.last_name ?? profile?.lastName ?? null
+          } })]
+        );
+        await client.query('COMMIT');
+        return { added: true, reason: 'joined' };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     },
     getGiveaway: loadGiveaway,
     async listGiveaways() {
@@ -104,11 +144,11 @@ export async function createPostgresStore(databaseUrl) {
     },
     async saveChannel(channel) {
       const result = await pool.query(`
-        INSERT INTO channels (id, title, username, url, required_channels, mini_app_button_color)
-        VALUES ($1,$2,$3,$4,$5::jsonb,$6)
-        ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, username=EXCLUDED.username, url=EXCLUDED.url, required_channels=EXCLUDED.required_channels, mini_app_button_color=EXCLUDED.mini_app_button_color, updated_at=NOW()
+        INSERT INTO channels (id, title, username, url, required_channels, mini_app_button_color, button_style)
+        VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
+        ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, username=EXCLUDED.username, url=EXCLUDED.url, required_channels=EXCLUDED.required_channels, mini_app_button_color=EXCLUDED.mini_app_button_color, button_style=EXCLUDED.button_style, updated_at=NOW()
         RETURNING *
-      `, [String(channel.id), channel.title ?? 'Без названия', channel.username ?? null, channel.url ?? null, JSON.stringify(channel.requiredChannels ?? []), channel.miniAppButtonColor ?? '#e6ff54']);
+      `, [String(channel.id), channel.title ?? 'Без названия', channel.username ?? null, channel.url ?? null, JSON.stringify(channel.requiredChannels ?? []), channel.miniAppButtonColor ?? '#e6ff54', channel.buttonStyle ?? 'primary']);
       return mapChannel(result.rows[0]);
     },
     async listChannels() {

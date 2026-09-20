@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import path from 'node:path';
 
 function parseChannels(value) {
@@ -14,7 +15,7 @@ export const config = {
   botToken: process.env.BOT_TOKEN,
   publicUrl: process.env.PUBLIC_URL ?? process.env.APP_URL ?? 'https://bot-1789719870-1665-wennera.bothost.tech',
   port: Number(process.env.PORT ?? 3000),
-  webhookSecret: process.env.WEBHOOK_SECRET ?? 'change-me',
+  webhookSecret: process.env.WEBHOOK_SECRET ?? crypto.randomBytes(32).toString('hex'),
   managedChannels: parseChannels(process.env.MANAGED_CHANNELS),
   dataFile: process.env.DATA_FILE ?? path.join(process.cwd(), 'data', 'bot-data.json')
 };

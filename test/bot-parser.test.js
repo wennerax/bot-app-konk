@@ -67,8 +67,8 @@ test('publishes premium emoji entities in channel posts', async () => {
   assert.equal(payload[0], '-1001');
   assert.equal(payload[1], '🎁 Билеты\n\nПремиум ✨');
   assert.equal(payload[2].disable_web_page_preview, true);
-  assert.equal(payload[2].reply_markup.text, 'Участвовать');
-  assert.equal(payload[2].reply_markup.url, 'https://t.me/example?startapp=g_1');
+  assert.equal(payload[2].reply_markup.inline_keyboard[0][0].text, 'Участвовать');
+  assert.equal(payload[2].reply_markup.inline_keyboard[0][0].url, 'https://t.me/example?startapp=g_1');
 });
 
 test('converts markdown links to clickable Telegram link entities without page preview', async () => {
