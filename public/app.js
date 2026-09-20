@@ -105,7 +105,7 @@ function openParticipation(giveaway) {
   const accent = '#ff1744';
   document.documentElement.style.setProperty('--accent', accent);
   telegram?.MainButton?.setParams({ text: 'УЧАСТВОВАТЬ', color: accent, text_color: '#111111' });
-  list.hidden = true;
+  list.hidden = false;
   participation.hidden = false;
   resultStatus.hidden = true;
   resultStatus.replaceChildren();
@@ -195,6 +195,8 @@ document.querySelector('#back').addEventListener('click', () => {
   list.hidden = false;
   dice.hidden = false;
   status.hidden = false;
+  resultStatus.hidden = true;
+  window.scrollTo({ top: Math.max(list.offsetTop - 12, 0), behavior: 'smooth' });
 });
 
 async function load() {
