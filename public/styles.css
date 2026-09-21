@@ -88,18 +88,20 @@ body {
 
 .corner-badge {
 	position: fixed;
-	top: 14px;
-	right: 14px;
+	top: 18px;
+	right: 24px;
 	z-index: 30;
 	display: inline-block;
 	padding: 8px 10px;
-	font: 700 11px/1 'DM Mono', monospace;
-	letter-spacing: .16em;
+	font: 700 10px/1 'DM Mono', monospace;
+	letter-spacing: .18em;
 	text-transform: lowercase;
 	pointer-events: none;
 	user-select: none;
 	opacity: .9;
 	white-space: nowrap;
+	transform: scale(.94);
+	transform-origin: top right;
 }
 
 .corner-line {
@@ -111,7 +113,7 @@ body {
 	background-clip: text;
 	color: transparent;
 	animation: shimmer 3.6s linear infinite;
-	text-shadow: 0 0 18px rgba(255, 160, 98, .45);
+	text-shadow: 0 0 14px rgba(255, 160, 98, .4);
 }
 
 @keyframes shimmer {
