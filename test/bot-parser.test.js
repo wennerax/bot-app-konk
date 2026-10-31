@@ -56,7 +56,7 @@ test('keeps a custom emoji at the end of the description after trimming', () => 
 
 test('publishes premium emoji entities in channel posts', async () => {
   let payload;
-  const bot = { api: { sendMessage: async (...args) => { payload = args; } } };
+  const bot = { api: { sendRichMessage: async (...args) => { payload = args; } } };
   await publishGiveaway(bot, '-1001', {
     title: 'Билеты',
     description: 'Премиум ✨',
@@ -65,15 +65,15 @@ test('publishes premium emoji entities in channel posts', async () => {
   }, 'https://t.me/example?startapp=g_1');
 
   assert.equal(payload[0], '-1001');
-  assert.equal(payload[1], '🎁 Билеты\n\nПремиум ✨');
-  assert.equal(payload[2].disable_web_page_preview, true);
-  assert.equal(payload[2].reply_markup.inline_keyboard[0][0].text, 'Участвовать');
-  assert.equal(payload[2].reply_markup.inline_keyboard[0][0].url, 'https://t.me/example?startapp=g_1');
+  assert.match(payload[1].html, /<p>🎁 Билеты<\/p>/);
+  assert.match(payload[1].html, /<p>Премиум ✨<\/p>/);
+  assert.match(payload[1].html, /<tg-button-row align="center">/);
+  assert.match(payload[1].html, /<tg-button type="url" style="primary" url="https:\/\/t\.me\/example\?startapp=g_1">🎁 Участвовать<\/tg-button>/);
 });
 
 test('adds the referral button only when a referral channel is configured', async () => {
   let payload;
-  const bot = { api: { sendMessage: async (...args) => { payload = args; } } };
+  const bot = { api: { sendRichMessage: async (...args) => { payload = args; } } };
   await publishGiveaway(bot, '-1001', {
     id: 'giveaway-1',
     title: 'Билеты',
@@ -81,25 +81,49 @@ test('adds the referral button only when a referral channel is configured', asyn
     referralChannel: { id: '-1002', title: 'Канал', url: 'https://t.me/channel' }
   }, 'https://t.me/example?startapp=g_giveaway-1', null, 'example');
 
-  const buttons = payload[2].reply_markup.inline_keyboard[0];
-  assert.equal(buttons.length, 2);
-  assert.equal(buttons[1].text, '🔗 Реф. ссылка');
-  assert.equal(buttons[1].url, 'https://t.me/example?start=ref_giveaway-1');
+  assert.match(payload[1].html, /<tg-button type="url" style="primary" url="https:\/\/t\.me\/example\?start=ref_giveaway-1">🔗 Реф\. ссылка<\/tg-button>/);
+  assert.equal((payload[1].html.match(/<tg-button /g) ?? []).length, 2);
 });
 
-test('converts markdown links to clickable Telegram link entities without page preview', async () => {
+test('converts markdown links to safe clickable rich message links', async () => {
   let payload;
-  const bot = { api: { sendMessage: async (...args) => { payload = args; } } };
+  const bot = { api: { sendRichMessage: async (...args) => { payload = args; } } };
 
   await publishGiveaway(bot, '-1001', {
     title: 'Билеты',
-    description: 'Подпишись на [канал](https://example.com)',
+    description: 'Подпишись на [<канал>](https://example.com/?x=1&y=2)',
     buttonStyle: 'primary'
   }, 'https://t.me/example?startapp=g_1');
 
-  assert.equal(payload[1], '🎁 Билеты\n\nПодпишись на канал');
-  assert.equal(payload[2].disable_web_page_preview, true);
-  assert.ok(payload[2].entities.some((entity) => entity.type === 'text_link' && entity.url === 'https://example.com'));
+  assert.match(payload[1].html, /Подпишись на <a href="https:\/\/example\.com\/\?x=1&amp;y=2">&lt;канал&gt;<\/a>/);
+});
+
+test('keeps giveaway media in the rich message with the same button row', async () => {
+  let payload;
+  const bot = { api: { sendRichMessage: async (...args) => { payload = args; } } };
+  await publishGiveaway(bot, '-1001', {
+    title: 'Фото-приз',
+    description: 'Условия',
+    media: { type: 'photo', fileId: 'telegram-file-id' }
+  }, 'https://t.me/example?startapp=g_1');
+
+  assert.equal(payload[1].media[0].id, 'giveaway_media');
+  assert.deepEqual(payload[1].media[0].media, { type: 'photo', media: 'telegram-file-id' });
+  assert.match(payload[1].html, /<img src="tg:\/\/photo\?id=giveaway_media">/);
+  assert.match(payload[1].html, /<tg-button-row align="center">/);
+});
+
+test('escapes giveaway title and description before sending rich HTML', async () => {
+  let payload;
+  const bot = { api: { sendRichMessage: async (...args) => { payload = args; } } };
+  await publishGiveaway(bot, '-1001', {
+    title: '<приз>',
+    description: 'условие <script>alert(1)</script>'
+  }, 'https://t.me/example?startapp=g_1');
+
+  assert.match(payload[1].html, /<p>🎁 &lt;приз&gt;<\/p>/);
+  assert.match(payload[1].html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(payload[1].html, /<script>/);
 });
 
 test('keeps consecutive custom emoji with different UTF-16 lengths', () => {

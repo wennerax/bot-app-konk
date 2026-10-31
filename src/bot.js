@@ -58,55 +58,59 @@ function utf16IndexToStringIndex(value, offset) {
   return utf16Cursor >= offset ? cursor : value.length;
 }
 
-function convertMarkdownLinksToTelegramEntities(text = '') {
-  const entities = [];
+function convertMarkdownLinksToRichHtml(text = '') {
   const pattern = /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g;
   let result = '';
-  let lastIndex = 0;
+  let cursor = 0;
   let match;
 
   while ((match = pattern.exec(text)) !== null) {
-    const [full, label, url] = match;
-    result += text.slice(lastIndex, match.index);
-    const labelStart = result.length;
-    result += label;
-    entities.push({ type: 'text_link', offset: labelStart, length: label.length, url });
-    lastIndex = match.index + full.length;
+    result += escapeHtml(text.slice(cursor, match.index));
+    result += `<a href="${escapeHtml(match[2])}">${escapeHtml(match[1])}</a>`;
+    cursor = match.index + match[0].length;
   }
 
-  result += text.slice(lastIndex);
-  return { text: result, entities };
+  return result + escapeHtml(text.slice(cursor));
 }
 
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorChatId = null, botUsername = null) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
-  const keyboard = new InlineKeyboard().add({
-    text: 'Участвовать',
-    url: miniAppUrl,
-    style: giveaway.buttonStyle ?? 'primary'
-  });
-  if (giveaway.referralChannel && botUsername) {
-    keyboard.url('🔗 Реф. ссылка', getReferralBotLink(botUsername, giveaway.id));
-  }
   const customEmojiEntities = normalizeCustomEmojiEntities(giveaway.entities);
   const safeText = customEmojiEntities.length ? replaceCustomEmojiWithFallback(text, customEmojiEntities) : text;
-  const { text: textWithLinks, entities: linkEntities } = convertMarkdownLinksToTelegramEntities(safeText);
-  const options = {
-    reply_markup: keyboard,
-    disable_web_page_preview: true,
-    ...(linkEntities.length ? { entities: linkEntities } : {})
-  };
-  const mediaOptions = {
-    caption: textWithLinks,
-    reply_markup: keyboard,
-    disable_web_page_preview: true,
-    ...(linkEntities.length ? { caption_entities: linkEntities } : {})
-  };
+  const descriptionStart = safeText.indexOf('\n\n', 3);
+  const title = safeText.slice(3, descriptionStart);
+  const description = safeText.slice(descriptionStart + 2);
+  const buttonStyle = ['primary', 'success', 'danger'].includes(giveaway.buttonStyle)
+    ? ` style="${giveaway.buttonStyle}"`
+    : '';
+  const buttons = [
+    `<tg-button type="url"${buttonStyle} url="${escapeHtml(miniAppUrl)}">🎁 Участвовать</tg-button>`
+  ];
+  if (giveaway.referralChannel && botUsername) {
+    buttons.push(
+      `<tg-button type="url" style="primary" url="${escapeHtml(getReferralBotLink(botUsername, giveaway.id))}">🔗 Реф. ссылка</tg-button>`
+    );
+  }
 
-  if (giveaway.media?.type === 'photo') return bot.api.sendPhoto(channelId, giveaway.media.fileId, mediaOptions);
-  if (giveaway.media?.type === 'video') return bot.api.sendVideo(channelId, giveaway.media.fileId, mediaOptions);
-  if (giveaway.media?.type === 'document') return bot.api.sendDocument(channelId, giveaway.media.fileId, mediaOptions);
-  return bot.api.sendMessage(channelId, textWithLinks, options);
+  let mediaHtml = '';
+  let media = [];
+  if (giveaway.media?.type === 'photo' || giveaway.media?.type === 'video' || giveaway.media?.type === 'document') {
+    const mediaId = 'giveaway_media';
+    const mediaTag = giveaway.media.type === 'photo' ? 'img'
+      : giveaway.media.type === 'video' ? 'video' : 'tg-document';
+    const closingTag = mediaTag === 'img' ? '' : `</${mediaTag}>`;
+    mediaHtml = `<${mediaTag} src="tg://${giveaway.media.type}?id=${mediaId}">${closingTag}`;
+    media = [{
+      id: mediaId,
+      media: { type: giveaway.media.type, media: giveaway.media.fileId }
+    }];
+  }
+
+  const html = `${mediaHtml}<p>🎁 ${escapeHtml(title)}</p><p>${convertMarkdownLinksToRichHtml(description)}</p><tg-button-row align="center">${buttons.join('')}</tg-button-row>`;
+  return bot.api.sendRichMessage(channelId, {
+    html,
+    ...(media.length ? { media } : {})
+  });
 }
 
 function utf16Length(value) {
