@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { createBot, startGiveawayScheduler } from './bot.js';
 import { config } from './config.js';
-import { createGiveaway, ensurePrimaryChannel } from './domain/giveaway.js';
+import { createGiveaway, ensurePrimaryChannel, getParticipationLink } from './domain/giveaway.js';
 import { MemoryStore } from './store/memory-store.js';
 import { FileStore } from './store/file-store.js';
 import { addParticipant } from './domain/giveaway.js';
@@ -10,6 +10,18 @@ import { checkRequiredChannels } from './services/subscription.js';
 import { validateWebAppInitData } from './services/telegram-auth.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+
+function publicGiveaway(giveaway) {
+  const { referralCounts, referredBy, ...publicData } = giveaway;
+  return publicData;
+}
+
+function getReferralIdFromInitData(initData, giveawayId, userId) {
+  const startParam = new URLSearchParams(initData ?? '').get('start_param') ?? '';
+  const match = /^g_(.+)_r_(\d+)$/.exec(startParam);
+  if (!match || match[1] !== String(giveawayId) || match[2] === String(userId)) return null;
+  return match[2];
+}
 
 export function buildServer({ bot, store, botToken, webhookSecret } = {}) {
   const app = Fastify({ logger: true });
@@ -28,13 +40,17 @@ export function buildServer({ bot, store, botToken, webhookSecret } = {}) {
       lastErrorDate: info.last_error_date ?? null
     };
   });
-  app.get('/api/giveaways', async () => (await giveawayStore.listGiveaways()).filter((giveaway) => giveaway.status !== 'draft'));
+  app.get('/api/giveaways', async () => (await giveawayStore.listGiveaways())
+    .filter((giveaway) => giveaway.status !== 'draft')
+    .map(publicGiveaway));
   app.get('/api/my-participations', async (request, reply) => {
     if (!botToken) return reply.code(503).send({ error: 'BOT_TOKEN не настроен' });
     const user = validateWebAppInitData(request.headers['x-telegram-init-data'], botToken);
     if (!user) return reply.code(401).send({ error: 'Telegram не передал данные пользователя. Откройте Mini App из Telegram.' });
     const giveaways = await giveawayStore.listGiveaways();
-    return giveaways.filter((giveaway) => giveaway.status !== 'draft' && giveaway.participants.includes(String(user.id)));
+    return giveaways
+      .filter((giveaway) => giveaway.status !== 'draft' && giveaway.participants.includes(String(user.id)))
+      .map(publicGiveaway);
   });
   app.get('/api/giveaways/:id', async (request, reply) => {
     const giveaway = await giveawayStore.getGiveaway(request.params.id);
@@ -44,7 +60,7 @@ export function buildServer({ bot, store, botToken, webhookSecret } = {}) {
     const winners = Array.isArray(giveaway.winners) ? giveaway.winners : [];
     const winnerIndex = userId ? winners.findIndex((winnerId) => String(winnerId) === userId) : -1;
     return {
-      ...giveaway,
+      ...publicGiveaway(giveaway),
       viewerResult: giveaway.status === 'finished' && userId
         ? { participated: giveaway.participants.includes(userId), won: winnerIndex >= 0, place: winnerIndex >= 0 ? winnerIndex + 1 : null }
         : null
@@ -88,11 +104,26 @@ export function buildServer({ bot, store, botToken, webhookSecret } = {}) {
     giveaway.requiredChannels = ensurePrimaryChannel(giveaway.channelId, giveaway.requiredChannels);
     const check = await checkRequiredChannels(bot, user.id, giveaway.requiredChannels);
     if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels, missingChannels: check.channels.filter((channel) => !channel.isMember) });
+    const referrerId = getReferralIdFromInitData(
+      request.headers['x-telegram-init-data'],
+      giveaway.id,
+      user.id
+    );
     const result = giveawayStore.addParticipant
-      ? await giveawayStore.addParticipant(giveaway.id, user.id, user)
-      : addParticipant(giveaway, user.id, user);
+      ? await giveawayStore.addParticipant(giveaway.id, user.id, user, referrerId)
+      : addParticipant(giveaway, user.id, user, referrerId);
     if (!giveawayStore.addParticipant) await giveawayStore.saveGiveaway(giveaway);
-    return { ...result, giveawayId: giveaway.id };
+    const response = { ...result, giveawayId: giveaway.id };
+    const updatedGiveaway = await giveawayStore.getGiveaway(giveaway.id);
+    if (updatedGiveaway?.status === 'active' && updatedGiveaway.participants.includes(String(user.id))) {
+      response.referralLink = getParticipationLink(
+        (await bot.api.getMe()).username,
+        giveaway.id,
+        user.id
+      );
+      response.referralCount = Number(updatedGiveaway.referralCounts?.[String(user.id)] ?? 0);
+    }
+    return response;
   });
   if (bot) {
     app.get('/telegram/webhook', async () => ({ ok: true, message: 'Telegram webhook endpoint is ready' }));

@@ -27,6 +27,9 @@ export class FileStore {
         const requiredChannels = ensurePrimaryChannel(giveaway.channelId, giveaway.requiredChannels ?? []);
         migrated ||= JSON.stringify(requiredChannels) !== JSON.stringify(giveaway.requiredChannels ?? []);
         giveaway.requiredChannels = requiredChannels;
+        if (!giveaway.referralCounts || !giveaway.referredBy) migrated = true;
+        giveaway.referralCounts ??= {};
+        giveaway.referredBy ??= {};
       }
       if (migrated) await this.persist();
     } catch (error) {
@@ -56,10 +59,10 @@ export class FileStore {
     return this.data.giveaways[id] ? structuredClone(this.data.giveaways[id]) : null;
   }
 
-  async addParticipant(id, userId, profile) {
+  async addParticipant(id, userId, profile, referrerId) {
     const giveaway = this.data.giveaways[id];
     if (!giveaway) return { added: false, reason: 'not_found' };
-    const result = addParticipant(giveaway, userId, profile);
+    const result = addParticipant(giveaway, userId, profile, referrerId);
     if (result.added) await this.persist();
     return result;
   }

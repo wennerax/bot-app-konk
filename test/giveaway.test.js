@@ -25,6 +25,16 @@ test('registers a participant only once', () => {
   assert.deepEqual(addParticipant(giveaway, 42), { added: false, reason: 'already_joined' });
 });
 
+test('credits a successful referral once and rejects self-referrals', () => {
+  const giveaway = createGiveaway({ title: 'Приз', channelId: '-1001', winnersCount: 1 });
+  addParticipant(giveaway, 10);
+  assert.deepEqual(addParticipant(giveaway, 20, null, 10), { added: true, reason: 'joined' });
+  assert.deepEqual(addParticipant(giveaway, 20, null, 10), { added: false, reason: 'already_joined' });
+  assert.deepEqual(addParticipant(giveaway, 30, null, 30), { added: true, reason: 'joined' });
+  assert.deepEqual(giveaway.referralCounts, { '10': 1 });
+  assert.deepEqual(giveaway.referredBy, { '20': '10' });
+});
+
 test('selects unique winners and closes the giveaway', () => {
   const giveaway = createGiveaway({ title: 'Приз', channelId: '-1001', winnersCount: 2 });
   giveaway.participants = ['1', '2', '3'];
@@ -51,4 +61,12 @@ test('selects exactly the configured number from one hundred participants', () =
   assert.equal(new Set(winners).size, 2);
   assert.ok(winners.every((winner) => giveaway.participants.includes(winner)));
   assert.equal(giveaway.status, 'finished');
+});
+
+test('weights winner selection by verified referral count without duplicate winners', () => {
+  const giveaway = createGiveaway({ title: 'Приз', channelId: '-1001', winnersCount: 2 });
+  giveaway.participants = ['1', '2', '3'];
+  giveaway.referralCounts = { '1': 3 };
+  assert.deepEqual(pickWinners(giveaway, () => 0.5), ['1', '3']);
+  assert.equal(new Set(giveaway.winners).size, giveaway.winners.length);
 });
