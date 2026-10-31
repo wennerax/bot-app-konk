@@ -44,7 +44,7 @@ test('API returns 404 for unknown giveaway', async () => {
   await app.close();
 });
 
-test('only credits a referral after the invitee passes subscription checks', async () => {
+test('referral counts only after subscription to the configured referral channel', async () => {
   const botToken = 'test-token';
   const store = new MemoryStore();
   const giveaway = {
@@ -52,7 +52,8 @@ test('only credits a referral after the invitee passes subscription checks', asy
     title: 'Приз',
     description: '',
     channelId: '-1001',
-    requiredChannels: [{ id: '-1001', title: 'Канал', url: null }],
+    requiredChannels: [{ id: '-1001', title: 'Канал конкурса', url: null }],
+    referralChannel: { id: '-1002', title: 'Канал подписки', url: 'https://t.me/referral_channel' },
     winnersCount: 1,
     status: 'active',
     participants: ['10'],
@@ -64,35 +65,43 @@ test('only credits a referral after the invitee passes subscription checks', asy
     endsAt: null
   };
   await store.saveGiveaway(giveaway);
-  let isMember = false;
+  let subscribedToReferralChannel = false;
   const bot = {
     api: {
-      getChatMember: async () => ({ status: isMember ? 'member' : 'left' }),
-      getMe: async () => ({ username: 'test_bot' })
+      getChatMember: async (channelId) => ({
+        status: String(channelId) === '-1002' && !subscribedToReferralChannel ? 'left' : 'member'
+      })
     }
   };
   const app = buildServer({ bot, botToken, store });
-  const headers = { 'x-telegram-init-data': initData(botToken, { id: 20, first_name: 'Friend' }, 'g_referral-test_r_10') };
+  const headers = {
+    'x-telegram-init-data': initData(
+      botToken,
+      { id: 20, first_name: 'Friend' },
+      'g_referral-test_r_10'
+    )
+  };
   const rejected = await app.inject({
     method: 'POST',
     url: `/api/giveaways/${giveaway.id}/participate`,
     headers
   });
   assert.equal(rejected.statusCode, 403);
+  assert.equal(rejected.json().missingChannels[0].id, '-1002');
   assert.deepEqual((await store.getGiveaway(giveaway.id)).referralCounts, {});
-  isMember = true;
-  const response = await app.inject({
+
+  subscribedToReferralChannel = true;
+  const joined = await app.inject({
     method: 'POST',
     url: `/api/giveaways/${giveaway.id}/participate`,
     headers
   });
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.json().added, true);
-  assert.equal(response.json().referralLink, 'https://t.me/test_bot?startapp=g_referral-test_r_20');
-  assert.equal(response.json().referralCount, 0);
+  assert.equal(joined.statusCode, 200);
+  assert.equal(joined.json().added, true);
   const savedGiveaway = await store.getGiveaway(giveaway.id);
   assert.deepEqual(savedGiveaway.referralCounts, { '10': 1 });
   assert.deepEqual(savedGiveaway.referredBy, { '20': '10' });
+
   const publicResponse = await app.inject({ method: 'GET', url: `/api/giveaways/${giveaway.id}` });
   assert.equal('referralCounts' in publicResponse.json(), false);
   assert.equal('referredBy' in publicResponse.json(), false);

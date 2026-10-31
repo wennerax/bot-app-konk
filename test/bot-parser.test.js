@@ -71,6 +71,22 @@ test('publishes premium emoji entities in channel posts', async () => {
   assert.equal(payload[2].reply_markup.inline_keyboard[0][0].url, 'https://t.me/example?startapp=g_1');
 });
 
+test('adds the referral button only when a referral channel is configured', async () => {
+  let payload;
+  const bot = { api: { sendMessage: async (...args) => { payload = args; } } };
+  await publishGiveaway(bot, '-1001', {
+    id: 'giveaway-1',
+    title: 'Билеты',
+    description: '',
+    referralChannel: { id: '-1002', title: 'Канал', url: 'https://t.me/channel' }
+  }, 'https://t.me/example?startapp=g_giveaway-1', null, 'example');
+
+  const buttons = payload[2].reply_markup.inline_keyboard[0];
+  assert.equal(buttons.length, 2);
+  assert.equal(buttons[1].text, '🔗 Реф. ссылка');
+  assert.equal(buttons[1].url, 'https://t.me/example?start=ref_giveaway-1');
+});
+
 test('converts markdown links to clickable Telegram link entities without page preview', async () => {
   let payload;
   const bot = { api: { sendMessage: async (...args) => { payload = args; } } };

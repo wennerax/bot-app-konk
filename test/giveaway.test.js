@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from '../src/domain/giveaway.js';
+import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, getReferralBotLink, pickWinners } from '../src/domain/giveaway.js';
 
 test('puts the contest channel first and removes legacy default partners', () => {
   const channels = ensurePrimaryChannel('-1001', [
@@ -27,6 +27,7 @@ test('registers a participant only once', () => {
 
 test('credits a successful referral once and rejects self-referrals', () => {
   const giveaway = createGiveaway({ title: 'Приз', channelId: '-1001', winnersCount: 1 });
+  giveaway.referralChannel = { id: '-1002', title: 'Реферальный канал' };
   addParticipant(giveaway, 10);
   assert.deepEqual(addParticipant(giveaway, 20, null, 10), { added: true, reason: 'joined' });
   assert.deepEqual(addParticipant(giveaway, 20, null, 10), { added: false, reason: 'already_joined' });
@@ -45,6 +46,9 @@ test('selects unique winners and closes the giveaway', () => {
 
 test('builds a Telegram deep link', () => {
   assert.equal(getParticipationLink('example_bot', 'giveaway-1'), 'https://t.me/example_bot?startapp=g_giveaway-1');
+  assert.equal(getParticipationLink('example_bot', 'giveaway-1', 42), 'https://t.me/example_bot?startapp=g_giveaway-1_r_42');
+  assert.equal(getReferralBotLink('example_bot', 'giveaway-1'), 'https://t.me/example_bot?start=ref_giveaway-1');
+  assert.equal(getReferralBotLink('example_bot', 'giveaway-1', 42), 'https://t.me/example_bot?start=ref_giveaway-1_42');
 });
 
 test('closes an empty giveaway so the scheduler does not retry it forever', () => {
@@ -65,6 +69,7 @@ test('selects exactly the configured number from one hundred participants', () =
 
 test('weights winner selection by verified referral count without duplicate winners', () => {
   const giveaway = createGiveaway({ title: 'Приз', channelId: '-1001', winnersCount: 2 });
+  giveaway.referralChannel = { id: '-1002', title: 'Реферальный канал' };
   giveaway.participants = ['1', '2', '3'];
   giveaway.referralCounts = { '1': 3 };
   assert.deepEqual(pickWinners(giveaway, () => 0.5), ['1', '3']);

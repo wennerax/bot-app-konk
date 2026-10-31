@@ -1,5 +1,5 @@
 import { Bot, InlineKeyboard } from 'grammy';
-import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, pickWinners } from './domain/giveaway.js';
+import { addParticipant, createGiveaway, ensurePrimaryChannel, getParticipationLink, getReferralBotLink, pickWinners } from './domain/giveaway.js';
 import { checkRequiredChannels, findAdminChannels } from './services/subscription.js';
 
 function normalizeCustomEmojiEntities(entities = []) {
@@ -78,13 +78,16 @@ function convertMarkdownLinksToTelegramEntities(text = '') {
   return { text: result, entities };
 }
 
-async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorChatId = null) {
+async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorChatId = null, botUsername = null) {
   const text = `🎁 ${giveaway.title}\n\n${giveaway.description || 'Нажми кнопку, чтобы проверить условия и участвовать.'}`;
   const keyboard = new InlineKeyboard().add({
     text: 'Участвовать',
     url: miniAppUrl,
     style: giveaway.buttonStyle ?? 'primary'
   });
+  if (giveaway.referralChannel && botUsername) {
+    keyboard.url('🔗 Реф. ссылка', getReferralBotLink(botUsername, giveaway.id));
+  }
   const customEmojiEntities = normalizeCustomEmojiEntities(giveaway.entities);
   const safeText = customEmojiEntities.length ? replaceCustomEmojiWithFallback(text, customEmojiEntities) : text;
   const { text: textWithLinks, entities: linkEntities } = convertMarkdownLinksToTelegramEntities(safeText);
@@ -320,7 +323,7 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 
   bot.on('callback_query:data', async (context, next) => {
     const data = context.callbackQuery.data ?? '';
-    if (!data.startsWith('contest_')) return next();
+    if (!data.startsWith('contest_') && !data.startsWith('crs:') && !data.startsWith('cro:')) return next();
     const reference = data.split(':')[1];
     const giveaway = data.startsWith('contest_create:') ? null : await store.getGiveaway(reference);
     const channelId = giveaway?.channelId ?? reference;
@@ -376,6 +379,37 @@ export function createBot({ token, store, publicUrl, miniAppName, managedChannel
 
   bot.command('start', async (context) => {
     const payload = context.match?.trim();
+    const referralPayload = /^ref_(.+?)(?:_(\d+))?$/.exec(payload ?? '');
+    if (referralPayload) {
+      const giveaway = await store.getGiveaway(referralPayload[1]);
+      if (!giveaway || giveaway.status !== 'active' || !giveaway.referralChannel) {
+        return context.reply('Реферальная система этого конкурса не настроена или уже закрыта.');
+      }
+      const username = (await bot.api.getMe()).username;
+      const invitedBy = referralPayload[2];
+      if (!invitedBy) {
+        if (!giveaway.participants.includes(String(context.from.id))) {
+          return context.reply(
+            `Сначала вступи в конкурс «${giveaway.title}». После этого снова нажми «Реф. ссылка», чтобы получить личную ссылку.`,
+            { reply_markup: new InlineKeyboard().url('Участвовать в конкурсе', getParticipationLink(username, giveaway.id)) }
+          );
+        }
+        const personalLink = getReferralBotLink(username, giveaway.id, context.from.id);
+        return context.reply(`Твоя личная ссылка для конкурса «${giveaway.title}»:\n\n${personalLink}\n\nОтправь её друзьям. Друг должен подписаться на канал и участвовать в конкурсе, чтобы тебе засчитался дополнительный шанс.`);
+      }
+      if (invitedBy === String(context.from.id) || !giveaway.participants.includes(invitedBy)) {
+        return context.reply('Не удалось подтвердить реферальную ссылку. Попроси участника конкурса отправить её ещё раз.');
+      }
+      const keyboard = new InlineKeyboard();
+      if (giveaway.referralChannel.url) {
+        keyboard.url(`Подписаться: ${giveaway.referralChannel.title}`, giveaway.referralChannel.url).row();
+      }
+      keyboard.url('Перейти к участию', getParticipationLink(username, giveaway.id, invitedBy));
+      return context.reply(
+        `Тебя пригласили в конкурс «${giveaway.title}».\n\nПодпишись на канал «${giveaway.referralChannel.title}», затем нажми «Перейти к участию». Подписка проверится автоматически.`,
+        { reply_markup: keyboard }
+      );
+    }
     if (!payload?.startsWith('g_')) return context.reply('Привет! Открой конкурс из канала или нажми «ℹ️ Меню».', { reply_markup: mainMenuKeyboard });
     const giveaway = await store.getGiveaway(payload.slice(2));
     if (!giveaway) return context.reply('Этот конкурс больше не найден.');
@@ -474,6 +508,59 @@ MM-DD HH:mm
     return context.editMessageText(`⚙️ Настройка конкурса\n\nНазвание: ${giveaway.title}\nУсловия: ${giveaway.requiredChannels.length}\nОписание: ${giveaway.description || 'не задано'}\nИтоги по Москве: ${giveaway.endsAt ? formatMoscowDate(giveaway.endsAt) : 'вручную'}\nМедиа: ${giveaway.media ? 'добавлено' : 'нет'}\nСтатус: ${giveaway.status}`, { reply_markup: contestSettingsKeyboard(giveaway) });
   });
 
+  bot.callbackQuery(/^contest_referral:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    if (giveaway.status !== 'draft') return context.reply('Реферальную систему можно настроить только до публикации конкурса.');
+    const channels = (await findAdminChannels(bot, context.from.id, await store.listChannels()))
+      .filter((channel) => channel.url);
+    if (!channels.length) {
+      return context.editMessageText(
+        '🎯 Чтобы включить реферальную систему, добавьте бота администратором в публичный канал и опубликуйте в нём пост. Затем вернитесь к настройке конкурса.',
+        { reply_markup: new InlineKeyboard().text('⬅️ Назад', `contest_settings:${giveaway.id}`) }
+      );
+    }
+    const keyboard = new InlineKeyboard();
+    for (const [index, channel] of channels.entries()) {
+      const label = `${String(giveaway.referralChannel?.id) === String(channel.id) ? '✅ ' : ''}${channel.title}`;
+      keyboard.text(label.slice(0, 60), `crs:${giveaway.id}:${index}`).row();
+    }
+    if (giveaway.referralChannel) keyboard.text('Отключить реферальную систему', `cro:${giveaway.id}`).row();
+    keyboard.text('⬅️ Назад', `contest_settings:${giveaway.id}`);
+    return context.editMessageText(
+      `🎯 Реферальная система\n\n${giveaway.referralChannel ? `Канал подписки: ${giveaway.referralChannel.title}` : 'Выключена'}\n\nВыберите публичный канал. Приглашённому нужно будет подписаться на него и вступить в конкурс, чтобы пригласившему начислился дополнительный шанс.`,
+      { reply_markup: keyboard }
+    );
+  });
+
+  bot.callbackQuery(/^crs:([^:]+):(\d+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    if (giveaway.status !== 'draft') return context.reply('Реферальную систему можно настроить только до публикации конкурса.');
+    const channels = (await findAdminChannels(bot, context.from.id, await store.listChannels()))
+      .filter((channel) => channel.url);
+    const channel = channels[Number(context.match[2])];
+    if (!channel) return context.reply('Канал больше недоступен. Откройте настройки и выберите канал заново.');
+    giveaway.referralChannel = { id: String(channel.id), title: channel.title, url: channel.url };
+    await store.saveGiveaway(giveaway);
+    return context.editMessageText(
+      `✅ Реферальная система включена.\n\nКанал подписки: ${channel.title}\n\nПриглашённому нужно подписаться на этот канал и вступить в конкурс.`,
+      { reply_markup: contestSettingsKeyboard(giveaway) }
+    );
+  });
+
+  bot.callbackQuery(/^cro:(.+)$/, async (context) => {
+    await context.answerCallbackQuery();
+    const giveaway = await store.getGiveaway(context.match[1]);
+    if (!giveaway) return context.reply('Конкурс не найден.');
+    if (giveaway.status !== 'draft') return context.reply('Реферальную систему можно настроить только до публикации конкурса.');
+    giveaway.referralChannel = null;
+    await store.saveGiveaway(giveaway);
+    return context.editMessageText('Реферальная система отключена.', { reply_markup: contestSettingsKeyboard(giveaway) });
+  });
+
   bot.callbackQuery(/^contest_publish:(.+)$/, async (context) => {
     await context.answerCallbackQuery();
     const giveaway = await store.getGiveaway(context.match[1]);
@@ -482,7 +569,7 @@ MM-DD HH:mm
     giveaway.status = 'active';
     await store.saveGiveaway(giveaway);
     const username = (await bot.api.getMe()).username;
-    await publishGiveaway(bot, giveaway.channelId, giveaway, getParticipationLink(username, giveaway.id), context.from.id);
+    await publishGiveaway(bot, giveaway.channelId, giveaway, getParticipationLink(username, giveaway.id), context.from.id, username);
     const contests = (await store.listGiveaways()).filter((item) => String(item.channelId) === String(giveaway.channelId));
     return context.editMessageText(`✅ Конкурс опубликован: ${giveaway.title}\n\n🎁 Настройка конкурсов\n\nКонкурсов: ${contests.length}\nВыберите конкурс или создайте новый:`, {
       reply_markup: contestsMenuKeyboard(giveaway.channelId, contests)
@@ -836,7 +923,7 @@ MM-DD HH:mm
       });
       await store.saveGiveaway(giveaway);
       const username = (await bot.api.getMe()).username;
-      await publishGiveaway(bot, channelId, giveaway, getParticipationLink(username, giveaway.id), context.from.id);
+      await publishGiveaway(bot, channelId, giveaway, getParticipationLink(username, giveaway.id), context.from.id, username);
       await context.reply(`Конкурс создан: ${giveaway.id}`);
     } catch (error) {
       await context.reply(`Не удалось создать конкурс: ${error.message}`);
@@ -854,6 +941,7 @@ function contestSettingsKeyboard(giveaway) {
   const keyboard = new InlineKeyboard()
     .text('✏️ Название конкурса', `contest_name:${giveaway.id}`).row()
     .text('📋 Партнёры', `contest_conditions:${giveaway.id}`).row()
+    .text(giveaway.referralChannel ? `🎯 Рефералы: ${giveaway.referralChannel.title}`.slice(0, 60) : '🎯 Реферальная система: выкл.', `contest_referral:${giveaway.id}`).row()
     .text('📝 Описание', `contest_description:${giveaway.id}`).row()
     .text('🎨 Кнопка', `contest_button:${giveaway.id}`).row()
     .text('⏰ Итоги конкурса', `contest_ends:${giveaway.id}`).row()

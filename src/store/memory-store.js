@@ -1,3 +1,5 @@
+import { addParticipant } from '../domain/giveaway.js';
+
 export class MemoryStore {
   constructor() {
     this.giveaways = new Map();
@@ -7,6 +9,12 @@ export class MemoryStore {
   async saveGiveaway(giveaway) {
     this.giveaways.set(giveaway.id, giveaway);
     return giveaway;
+  }
+
+  async addParticipant(id, userId, profile, referrerId) {
+    const giveaway = this.giveaways.get(id);
+    if (!giveaway) return { added: false, reason: 'not_found' };
+    return addParticipant(giveaway, userId, profile, referrerId);
   }
 
   async getGiveaway(id) {

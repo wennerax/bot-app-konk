@@ -35,6 +35,7 @@ export function createGiveaway(input, now = new Date()) {
     description: String(input.description ?? '').trim(),
     channelId,
     requiredChannels: ensurePrimaryChannel(channelId, Array.isArray(input.requiredChannels) ? input.requiredChannels : []),
+    referralChannel: input.referralChannel ?? null,
     miniAppButtonColor: input.miniAppButtonColor ?? '#e6ff54',
     buttonStyle: ['danger', 'success', 'primary', 'default'].includes(input.buttonStyle) ? input.buttonStyle : 'primary',
     media: input.media ?? null,
@@ -65,7 +66,7 @@ export function addParticipant(giveaway, userId, profile = null, referrerId = nu
     };
   }
   const normalizedReferrerId = referrerId == null ? null : String(referrerId);
-  if (normalizedReferrerId && normalizedReferrerId !== normalizedId && giveaway.participants.includes(normalizedReferrerId)) {
+  if (giveaway.referralChannel && normalizedReferrerId && normalizedReferrerId !== normalizedId && giveaway.participants.includes(normalizedReferrerId)) {
     giveaway.referralCounts ??= {};
     giveaway.referredBy ??= {};
     if (!giveaway.referredBy[normalizedId]) {
@@ -89,7 +90,7 @@ export function pickWinners(giveaway, random) {
 
   for (let index = 0; index < count; index += 1) {
     const weights = pool.map((userId) => {
-      const referrals = Number(giveaway.referralCounts?.[userId] ?? 0);
+      const referrals = giveaway.referralChannel ? Number(giveaway.referralCounts?.[userId] ?? 0) : 0;
       return 1 + (Number.isSafeInteger(referrals) && referrals > 0 ? referrals : 0);
     });
     const totalWeight = weights.reduce((total, weight) => total + weight, 0);
@@ -111,4 +112,9 @@ export function pickWinners(giveaway, random) {
 export function getParticipationLink(botUsername, giveawayId, referrerId = null) {
   const referralParam = referrerId == null ? '' : `_r_${referrerId}`;
   return `https://t.me/${botUsername}?startapp=g_${giveawayId}${referralParam}`;
+}
+
+export function getReferralBotLink(botUsername, giveawayId, referrerId = null) {
+  const referralParam = referrerId == null ? '' : `_${referrerId}`;
+  return `https://t.me/${botUsername}?start=ref_${giveawayId}${referralParam}`;
 }

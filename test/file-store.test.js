@@ -12,6 +12,7 @@ test('file store persists channels and giveaways', async () => {
   const firstStore = await new FileStore(filePath).init();
   await firstStore.saveChannel({ id: '-1001', title: 'Test channel' });
   const giveaway = createGiveaway({ title: 'Prize', channelId: '-1001', winnersCount: 1 });
+  giveaway.referralChannel = { id: '-1002', title: 'Referral channel', url: 'https://t.me/referral' };
   await firstStore.saveGiveaway(giveaway);
   await firstStore.addParticipant(giveaway.id, 10);
   await firstStore.addParticipant(giveaway.id, 20, null, 10);
@@ -23,6 +24,7 @@ test('file store persists channels and giveaways', async () => {
   const savedGiveaway = await reopenedStore.getGiveaway(giveaway.id);
   assert.deepEqual(savedGiveaway.referralCounts, { '10': 1 });
   assert.deepEqual(savedGiveaway.referredBy, { '20': '10' });
+  assert.deepEqual(savedGiveaway.referralChannel, giveaway.referralChannel);
   await reopenedStore.close();
   await fs.rm(directory, { recursive: true, force: true });
 });

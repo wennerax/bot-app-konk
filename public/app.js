@@ -8,10 +8,6 @@ const participation = document.querySelector('#participation');
 const status = document.querySelector('#check-status');
 const resultStatus = document.querySelector('#result-status');
 const dice = document.querySelector('.dice');
-const referral = document.querySelector('#referral');
-const referralCount = document.querySelector('#referral-count');
-const referralLink = document.querySelector('#referral-link');
-const copyReferral = document.querySelector('#copy-referral');
 let scrollFrame = null;
 let scrollStopTimer = null;
 
@@ -113,7 +109,6 @@ function openParticipation(giveaway) {
   participation.hidden = false;
   resultStatus.hidden = true;
   resultStatus.replaceChildren();
-  referral.hidden = true;
   if (giveaway.status === 'finished') {
     showResult(giveaway.viewerResult);
     return;
@@ -191,31 +186,16 @@ async function participate() {
     return;
   }
   status.textContent = result.added ? 'Участие подтверждено!' : 'Ты уже участвуешь в этом конкурсе.';
-  if (result.referralLink) {
-    referralLink.value = result.referralLink;
-    referralCount.textContent = `Приглашено друзей: ${result.referralCount}. За каждого подписавшегося участника начисляется 1 дополнительный билет.`;
-    referral.hidden = false;
-  }
   telegram?.HapticFeedback?.notificationOccurred('success');
 }
 
 document.querySelector('#participate').addEventListener('click', participate);
-copyReferral.addEventListener('click', async () => {
-  referralLink.select();
-  try {
-    await navigator.clipboard.writeText(referralLink.value);
-    copyReferral.textContent = 'Скопировано';
-  } catch {
-    copyReferral.textContent = 'Выдели и скопируй ссылку';
-  }
-});
 document.querySelector('#back').addEventListener('click', () => {
   participation.hidden = true;
   list.hidden = false;
   dice.hidden = false;
   status.hidden = false;
   resultStatus.hidden = true;
-  referral.hidden = true;
   window.scrollTo({ top: Math.max(list.offsetTop - 12, 0), behavior: 'smooth' });
 });
 

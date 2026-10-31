@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { createBot, startGiveawayScheduler } from './bot.js';
 import { config } from './config.js';
-import { createGiveaway, ensurePrimaryChannel, getParticipationLink } from './domain/giveaway.js';
+import { createGiveaway, ensurePrimaryChannel } from './domain/giveaway.js';
 import { MemoryStore } from './store/memory-store.js';
 import { FileStore } from './store/file-store.js';
 import { addParticipant } from './domain/giveaway.js';
@@ -11,16 +11,18 @@ import { validateWebAppInitData } from './services/telegram-auth.js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+function getReferralContext(initData, giveaway, userId) {
+  const startParam = new URLSearchParams(initData ?? '').get('start_param') ?? '';
+  const match = /^g_(.+)_r_(\d+)$/.exec(startParam);
+  if (!match || match[1] !== String(giveaway.id) || !giveaway.referralChannel) return null;
+  const referrerId = match[2];
+  if (referrerId === String(userId) || !giveaway.participants.includes(referrerId)) return null;
+  return { referrerId, referralChannel: giveaway.referralChannel };
+}
+
 function publicGiveaway(giveaway) {
   const { referralCounts, referredBy, ...publicData } = giveaway;
   return publicData;
-}
-
-function getReferralIdFromInitData(initData, giveawayId, userId) {
-  const startParam = new URLSearchParams(initData ?? '').get('start_param') ?? '';
-  const match = /^g_(.+)_r_(\d+)$/.exec(startParam);
-  if (!match || match[1] !== String(giveawayId) || match[2] === String(userId)) return null;
-  return match[2];
 }
 
 export function buildServer({ bot, store, botToken, webhookSecret } = {}) {
@@ -102,28 +104,20 @@ export function buildServer({ bot, store, botToken, webhookSecret } = {}) {
     const giveaway = await giveawayStore.getGiveaway(request.params.id);
     if (!giveaway) return reply.code(404).send({ error: 'Конкурс не найден' });
     giveaway.requiredChannels = ensurePrimaryChannel(giveaway.channelId, giveaway.requiredChannels);
-    const check = await checkRequiredChannels(bot, user.id, giveaway.requiredChannels);
-    if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels, missingChannels: check.channels.filter((channel) => !channel.isMember) });
-    const referrerId = getReferralIdFromInitData(
-      request.headers['x-telegram-init-data'],
-      giveaway.id,
-      user.id
+    const referral = getReferralContext(request.headers['x-telegram-init-data'], giveaway, user.id);
+    const referralIsRequired = referral && giveaway.requiredChannels.some(
+      (channel) => String(channel.id) === String(referral.referralChannel.id)
     );
+    const channelsToCheck = referral && !referralIsRequired
+      ? [...giveaway.requiredChannels, referral.referralChannel]
+      : giveaway.requiredChannels;
+    const check = await checkRequiredChannels(bot, user.id, channelsToCheck);
+    if (!check.passed) return reply.code(403).send({ error: 'Не выполнены условия конкурса', channels: check.channels, missingChannels: check.channels.filter((channel) => !channel.isMember) });
     const result = giveawayStore.addParticipant
-      ? await giveawayStore.addParticipant(giveaway.id, user.id, user, referrerId)
-      : addParticipant(giveaway, user.id, user, referrerId);
+      ? await giveawayStore.addParticipant(giveaway.id, user.id, user, referral?.referrerId)
+      : addParticipant(giveaway, user.id, user, referral?.referrerId);
     if (!giveawayStore.addParticipant) await giveawayStore.saveGiveaway(giveaway);
-    const response = { ...result, giveawayId: giveaway.id };
-    const updatedGiveaway = await giveawayStore.getGiveaway(giveaway.id);
-    if (updatedGiveaway?.status === 'active' && updatedGiveaway.participants.includes(String(user.id))) {
-      response.referralLink = getParticipationLink(
-        (await bot.api.getMe()).username,
-        giveaway.id,
-        user.id
-      );
-      response.referralCount = Number(updatedGiveaway.referralCounts?.[String(user.id)] ?? 0);
-    }
-    return response;
+    return { ...result, giveawayId: giveaway.id };
   });
   if (bot) {
     app.get('/telegram/webhook', async () => ({ ok: true, message: 'Telegram webhook endpoint is ready' }));

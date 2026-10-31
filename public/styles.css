@@ -53,13 +53,6 @@ body { background: var(--soft-bg); color: var(--soft-ink); font-size: 15px; }
 .dice { margin-bottom: 24px; filter: drop-shadow(0 8px 5px rgba(35,35,35,.12)); }
 @media (max-width: 480px) { .shell { width: min(100% - 22px, 620px); padding-top: 18px; } .hero h1 { font-size: 43px; } .giveaway { padding: 15px; } }
 
-.referral { margin-top: 24px; padding: 18px; border: 1px solid var(--soft-line); border-radius: 16px; background: var(--soft-bg); text-align: left; }
-.referral strong { display: block; color: var(--soft-ink); }
-.referral p { margin: 8px 0 12px; color: var(--soft-muted); font-size: 13px; font-weight: 400; }
-.referral-link { display: flex; gap: 8px; }
-.referral-link input { min-width: 0; flex: 1; padding: 10px; border: 1px solid var(--soft-line); border-radius: 8px; background: #fff; color: var(--soft-ink); font: 12px 'DM Mono', monospace; }
-.referral-link button { border: 0; border-radius: 8px; padding: 0 12px; background: var(--accent); color: #252719; font: 700 12px Manrope, sans-serif; cursor: pointer; }
-
 /* Telegram dice emoji roll */
 .dice { width: 112px; height: 112px; margin: 0 auto 30px; display: grid; place-items: center; font-size: 86px; line-height: 1; transform: rotate(0deg) translateY(0); filter: drop-shadow(0 9px 5px rgba(35, 35, 35, .18)); }
 .dice.rolling { animation: telegram-emoji-roll 1.15s cubic-bezier(.18, .8, .22, 1); }

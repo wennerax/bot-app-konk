@@ -27,9 +27,10 @@ export class FileStore {
         const requiredChannels = ensurePrimaryChannel(giveaway.channelId, giveaway.requiredChannels ?? []);
         migrated ||= JSON.stringify(requiredChannels) !== JSON.stringify(giveaway.requiredChannels ?? []);
         giveaway.requiredChannels = requiredChannels;
-        if (!giveaway.referralCounts || !giveaway.referredBy) migrated = true;
+        if (!giveaway.referralCounts || !giveaway.referredBy || !Object.hasOwn(giveaway, 'referralChannel')) migrated = true;
         giveaway.referralCounts ??= {};
         giveaway.referredBy ??= {};
+        giveaway.referralChannel ??= null;
       }
       if (migrated) await this.persist();
     } catch (error) {
