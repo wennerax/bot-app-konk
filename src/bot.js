@@ -60,17 +60,18 @@ function utf16IndexToStringIndex(value, offset) {
 
 function convertMarkdownLinksToRichHtml(text = '') {
   const pattern = /\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g;
+  const escapeText = (value) => escapeHtml(value).replace(/\r\n?|\n/g, '<br>');
   let result = '';
   let cursor = 0;
   let match;
 
   while ((match = pattern.exec(text)) !== null) {
-    result += escapeHtml(text.slice(cursor, match.index));
+    result += escapeText(text.slice(cursor, match.index));
     result += `<a href="${escapeHtml(match[2])}">${escapeHtml(match[1])}</a>`;
     cursor = match.index + match[0].length;
   }
 
-  return result + escapeHtml(text.slice(cursor));
+  return result + escapeText(text.slice(cursor));
 }
 
 async function publishGiveaway(bot, channelId, giveaway, miniAppUrl, moderatorChatId = null, botUsername = null) {

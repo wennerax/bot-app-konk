@@ -98,6 +98,18 @@ test('converts markdown links to safe clickable rich message links', async () =>
   assert.match(payload[1].html, /Подпишись на <a href="https:\/\/example\.com\/\?x=1&amp;y=2">&lt;канал&gt;<\/a>/);
 });
 
+test('preserves line breaks in giveaway descriptions', async () => {
+  let payload;
+  const bot = { api: { sendRichMessage: async (...args) => { payload = args; } } };
+
+  await publishGiveaway(bot, '-1001', {
+    title: 'Билеты',
+    description: 'Первая строка\nВторая строка\n\nЧетвертая строка'
+  }, 'https://t.me/example?startapp=g_1');
+
+  assert.match(payload[1].html, /<p>Первая строка<br>Вторая строка<br><br>Четвертая строка<\/p>/);
+});
+
 test('keeps giveaway media in the rich message with the same button row', async () => {
   let payload;
   const bot = { api: { sendRichMessage: async (...args) => { payload = args; } } };
